@@ -1,0 +1,50 @@
+name: update-docs-README
+
+# docs/ 폴더에 .md 파일이 추가·수정·삭제되면 자동으로 실행됩니다.
+on:
+  push:
+    paths:
+      - "docs/**.md"          # docs 하위 md 파일 변경 시
+  workflow_dispatch:          # 수동 실행도 허용
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write         # README.md 커밋을 위해 write 권한 필요
+
+    steps:
+      # 1. 저장소 체크아웃 (최신 커밋 포함)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # 전체 히스토리 (커밋 메시지 중복 방지용)
+
+      # 2. Python 환경 설정
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 3. 문서 목록 업데이트 스크립트 실행
+      - name: Run update script
+        run: |
+          python update_docs_readme.py \
+            --docs-dir docs \
+            --readme docs/README.md
+
+      # 4. 변경 사항이 있을 때만 커밋 & 푸시
+      - name: Commit and push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add docs/README.md
+
+          # 스테이징된 변경이 없으면 커밋 건너뜀
+          if git diff --cached --quiet; then
+            echo "변경 사항 없음 — 커밋을 건너뜁니다."
+          else
+            git commit -m "docs: auto-update document list in README.md [skip ci]"
+            git push
+          fi
