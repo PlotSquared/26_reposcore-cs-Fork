@@ -70,6 +70,40 @@ MyApp/
 - `bin/` : 빌드 결과물 폴더
 - `obj/` : 빌드 중간 파일 폴더
 
+4.1 실제 개발 시 확장된 디렉토리 구조
+앞서 살펴본 기본 디렉토리 구조는 프로젝트 생성 직후의 최소 구성입니다.  
+하지만 실제 개발에서는 하나의 `Program.cs` 파일에 모든 기능을 작성하기보다,  
+기능별로 파일을 분리하여 관리하는 것이 유지보수와 협업에 유리합니다.
+
+예를 들어 기능이 추가되면 다음과 같은 구조로 확장할 수 있습니다.
+```bash
+src/
+├─ Program.cs
+├─ Services/
+│ └─ GitHubService.cs
+├─ Data/
+│ └─ ScoreCalculator.cs
+├─ Utils/
+│ └─ OutputFormatter.cs
+```
+위의 구조에 따른 분리된 디렉토리는 다음과 같은 기능들을 포함합니다.
+- Services/ : GitHub API 통신, 외부 데이터 수집 관련 클래스
+- Data/ : 점수 계산, 데이터 처리 관련 클래스
+- Utils/ : 공통 보조 함수 및 출력 포맷 관련 클래스
+
+이 프로젝트에서 향후 구현될 기능을 기준으로 보면 다음과 같이 분리할 수 있습니다.
+
+- GitHub API 통신 → `Services/GitHubService.cs`
+- 점수 계산 로직 → `Data/ScoreCalculator.cs`
+- CLI 출력 처리 → `Utils/OutputFormatter.cs`
+- 전체 실행 흐름 → `Program.cs`
+
+위 구조에 따른 예시 흐름
+1. `Program.cs`에서 사용자 입력을 받는다
+2. `GitHubService`를 통해 데이터를 가져온다
+3. `ScoreCalculator`로 점수를 계산한다
+4. `OutputFormatter`로 결과를 출력한다
+
 ## 5. 빌드 및 실행 방법
 프로젝트 폴더에서 아래 명령어를 사용합니다.
 

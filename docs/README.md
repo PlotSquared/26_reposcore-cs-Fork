@@ -2,6 +2,8 @@
 
 ### 문서 목록
 
+<!-- DOC_LIST_START -->
+- [README-TEMPLATE.md](./README-TEMPLATE.md): README-TEMPLATE
 - [cli-lib-guide.md](./cli-lib-guide.md): C# CLI 프로그램 개발을 위한 추천 라이브러리
 - [csharp-convention.md](./csharp-convention.md): C# 코딩 컨벤션 가이드
 - [docker-guide.md](./docker-guide.md): Docker 설치 및 구동 가이드(WSL2 Ubuntu 기준)
@@ -11,7 +13,15 @@
 - [octokit-guide.md](./octokit-guide.md): Octokit.NET 활용 가이드
 - [score-guide.md](./score-guide.md): 오픈소스 기여 점수 산정 가이드
 - [vscode-extensions.md](./vscode-extensions.md): C# 개발을 위한 VSCode 확장 가이드 (Codespaces)
-
+<!-- DOC_LIST_END -->
+---
+> ⚠️ **문서 목록은 수작업으로 갱신하지 마세요.**
+> `docs/*.md` 문서를 생성·삭제하거나 제목을 변경할 경우, 반드시 아래 스크립트를 실행하여 목록을 자동 갱신하세요.
+> ```bash
+> python update-docs-readme.py
+> ```
+>
+> 스크립트 위치: `update-docs-readme.py` (레포 루트)
 ---
 프로젝트 내 문서 파일의 일관성을 유지하기 위해 다음과 같은 파일 이름 생성 규칙을 따릅니다.
 ---
