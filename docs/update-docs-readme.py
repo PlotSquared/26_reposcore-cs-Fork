@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
-DOCS_DIR = Path(__file__).parent / "docs"
+DOCS_DIR = Path(__file__).parent  # 스크립트가 docs/ 안에 위치
 README_PATH = DOCS_DIR / "README.md"
 
 # README.md 안에서 목록을 삽입할 마커

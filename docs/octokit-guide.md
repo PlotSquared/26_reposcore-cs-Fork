@@ -1,6 +1,6 @@
 # Octokit.NET 활용 가이드
 
-[Octockit 라이브러리 공식 홈페이지](https://github.com/octokit)
+[Octokit 라이브러리 공식 홈페이지](https://github.com/octokit)
 
 > 이 문서는 C# 환경에서 GitHub API를 사용하기 위한 라이브러리인 Octokit.NET의 기본 사용법을 설명합니다.
 > 저장소 이슈 조회, Pull Request 조회 등 GitHub 정보 연동 기능 구현 전에 기본 구조를 이해하는 데 목적이 있습니다.
