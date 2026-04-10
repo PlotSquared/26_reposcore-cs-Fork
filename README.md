@@ -18,7 +18,8 @@ A CLI for scoring student participation in an open-source class repo, implemente
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download) 설치 필요
   - 자세한 설치 방법은 [docs/dotnet-guide.md](docs/dotnet-guide.md) 참고
 
-### 2. 저장소 클론 (Codespace에서는 필요없음)
+### 2. 저장소 클론
+(Codespace에서는 필요없음. 이미 클론되어 있음.)
 
 ```bash
 git clone https://github.com/oss2026hnu/reposcore-cs.git
