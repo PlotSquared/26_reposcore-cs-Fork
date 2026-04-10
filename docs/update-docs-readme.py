@@ -1,5 +1,4 @@
 """
-update_docs_readme.py
 ---------------------
 docs/ 폴더의 마크다운 파일을 탐색하여 /docs/README.md의 문서 목록을 자동으로 갱신합니다.
 
@@ -27,7 +26,7 @@ MARKER_START = "<!-- DOC_LIST_START -->"
 MARKER_END   = "<!-- DOC_LIST_END -->"
 
 DEFAULT_README_TEMPLATE = """\
-# 📚 문서 목록
+# 문서 목록
 
 이 폴더의 모든 문서를 자동으로 관리합니다.
 
