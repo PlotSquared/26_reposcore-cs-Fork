@@ -1,5 +1,6 @@
 using Cocona;
 using RepoScore.Data;
+using RepoScore.Services;
 
 var app = CoconaApp.Create();
 
