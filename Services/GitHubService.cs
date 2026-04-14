@@ -27,6 +27,7 @@ namespace RepoScore.Services
             );
         }
 
+        // PR 개수
         public async Task<int> GetPullRequestCountAsync(string authorLogin)
         {
             var query =
@@ -40,6 +41,7 @@ namespace RepoScore.Services
             return await _connection.Run(query);
         }
 
+        // Issue 개수
         public async Task<int> GetIssueCountAsync(string authorLogin)
         {
             var query =
@@ -53,6 +55,7 @@ namespace RepoScore.Services
             return await _connection.Run(query);
         }
 
+        // PR 댓글
         public async Task<List<string>> GetPullRequestCommentsAsync(int prNumber)
         {
             var query =
@@ -68,6 +71,7 @@ namespace RepoScore.Services
             return new List<string>(result);
         }
 
+        // 최근 이슈 선점 현황 조회
         public async Task ShowRecentClaimsAsync()
         {
             var query = new Query()
