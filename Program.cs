@@ -7,25 +7,37 @@ var app = CoconaApp.Create();
 app.AddCommand(async (
     [Argument] string repo,
     [Option('t', Description = "GitHub Personal Access Token")] string? token = null,
-    [Option("show-claims", Description = "최근 이슈 선점 현황 조회")] bool showClaims = false
+    [Option("show-claims", Description = "최근 이슈 선점 현황 조회")] bool showClaims = false,
+    [Option("keywords", Description = "선점 키워드 목록 (쉼표 구분, 예: \"제가 하겠습니다,할게요\")")] string? keywords = null
 ) =>
 {
-if (showClaims)
-{
-    if (string.IsNullOrEmpty(token))
-        token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-
-    if (string.IsNullOrEmpty(token))
+    if (showClaims)
     {
-        Console.WriteLine("GitHub 토큰이 필요합니다.");
+        if (string.IsNullOrEmpty(token))
+            token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.WriteLine("GitHub 토큰이 필요합니다.");
+            return;
+        }
+
+        // 쉼표 기준으로 분리, 앞뒤 공백 제거, 빈 항목 제외
+        string[]? claimKeywords = null;
+        if (!string.IsNullOrWhiteSpace(keywords))
+        {
+            claimKeywords = keywords
+                .Split(',')
+                .Select(k => k.Trim())
+                .Where(k => k.Length > 0)
+                .ToArray();
+        }
+
+        var parts = repo.Split('/');
+        var service = new GitHubService(parts[0], parts[1], token, claimKeywords);
+        await service.ShowRecentClaimsAsync();
         return;
     }
-
-    var parts = repo.Split('/');
-    var service = new GitHubService(parts[0], parts[1], token);
-    await service.ShowRecentClaimsAsync();
-    return;
-}
 
     Console.WriteLine($"저장소: {repo}");
 
