@@ -26,6 +26,7 @@ namespace RepoScore.Services
         private static readonly string[] s_claimKeywords =
             ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
 
+
         // 작업 유형별 기한 (이슈 제목 키워드 기반 추론)
         private static readonly string[] s_docKeywords =
             ["doc", "docs", "문서", "readme", "guide", "typo", "오타"];
@@ -179,7 +180,7 @@ namespace RepoScore.Services
         }
 
         // 최근 이슈 선점 현황 조회 (동기 버전)
-        public void ShowRecentClaims()
+        public void ShowRecentClaims(string mode = "issue")
         {
             const string graphQL = @"
                 query($owner: String!, $name: String!) {
@@ -311,7 +312,7 @@ namespace RepoScore.Services
                 var now = DateTimeOffset.UtcNow;
                 Console.WriteLine("📌 최근 이슈 선점 현황\n");
 
-                bool foundAny = false;
+                var claimMap = new Dictionary<string, List<(string Url, bool HasPr, TimeSpan Remaining)>>();
 
                 foreach (var issue in nodes.EnumerateArray())
                 {
@@ -356,13 +357,11 @@ namespace RepoScore.Services
                             continue;
 
                         var login = author.TryGetProperty("login", out var loginProperty) && loginProperty.ValueKind == JsonValueKind.String
-                            ? loginProperty.GetString()
+                            ? loginProperty.GetString() ?? "unknown"
                             : "unknown";
 
                         if (!s_claimKeywords.Any(k => commentBody.Contains(k, StringComparison.OrdinalIgnoreCase)))
                             continue;
-
-                        foundAny = true;
 
                         // 작업 유형에 따른 기한 결정
                         bool isDoc = IsDocumentTask(issueTitle);
@@ -373,29 +372,100 @@ namespace RepoScore.Services
                         // PR 연결 여부 확인
                         bool hasPr = issueNumber > 0 && HasLinkedPullRequest(issueNumber);
 
-                        // 출력
-                        Console.WriteLine($"👤 {login}");
-                        Console.WriteLine($" - {issueUrl}");
-
-                        if (hasPr)
-                        {
-                            Console.WriteLine($" - ✅ PR 생성됨");
-                        }
-                        else
-                        {
-                            Console.WriteLine($" - {FormatRemainingTime(remaining)}");
-                        }
-
-                        Console.WriteLine();
+                        // 유저별 딕셔너리에 수집
+                        if (!claimMap.ContainsKey(login))
+                            claimMap[login] = new List<(string, bool, TimeSpan)>();
+                        claimMap[login].Add((issueUrl, hasPr, remaining));
                         break;
                     }
                 }
 
-                if (!foundAny)
+                // 출력
+                if (claimMap.Count == 0)
                 {
                     Console.WriteLine("최근 48시간 내 선점된 이슈가 없습니다.");
                 }
+                else if (mode == "user")
+                {
+                    foreach (var (login, claims) in claimMap)
+                    {
+                        Console.WriteLine($"👤 {login}");
+                        foreach (var (url, hasPr, remaining) in claims)
+                        {
+                            Console.WriteLine($" - {url}");
+                            if (hasPr)
+                                Console.WriteLine($"   ✅ PR 생성됨");
+                            else
+                                Console.WriteLine($"   {FormatRemainingTime(remaining)}");
+                        }
+                    }
+                }
+                else
+                {
+                    var claimedUrls = new HashSet<string>(
+                        claimMap.Values.SelectMany(c => c.Select(x => x.Url)));
+
+                    var unclaimedIssues = new List<string>();
+                    foreach (var issue in nodes.EnumerateArray())
+                    {
+                        if (!issue.TryGetProperty("url", out var u) || u.ValueKind != JsonValueKind.String)
+                            continue;
+                        var url = u.GetString() ?? "";
+                        if (!claimedUrls.Contains(url))
+                            unclaimedIssues.Add(url);
+                    }
+
+                    Console.WriteLine("📋 미선점 이슈");
+                    foreach (var url in unclaimedIssues)
+                        Console.WriteLine($" - {url}");
+                    Console.WriteLine();
+
+                    Console.WriteLine("📌 선점된 이슈");
+                    foreach (var (login, claims) in claimMap)
+                    {
+                        Console.WriteLine($"👤 {login}");
+                        foreach (var (url, hasPr, remaining) in claims)
+                        {
+                            Console.WriteLine($" - {url}");
+                            if (hasPr)
+                                Console.WriteLine($"   ✅ PR 생성됨");
+                            else
+                                Console.WriteLine($"   {FormatRemainingTime(remaining)}");
+                        }
+                    }
+                }
             }
+        }
+
+        // 모든 기여자의 GitHub ID 목록을 가져오는 메서드
+        public List<string> GetAllContributors()
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"repos/{_owner}/{_repo}/contributors");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+            var response = s_httpClient.Send(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"기여자 목록 조회 실패: HTTP {(int)response.StatusCode}");
+                return new List<string>();
+            }
+
+            Stream stream = response.Content.ReadAsStream();
+            StreamReader reader = new StreamReader(stream);
+            string json = reader.ReadToEnd();
+
+            using var document = JsonDocument.Parse(json);
+
+            var contributors = new List<string>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                if (element.TryGetProperty("login", out var loginProp))
+                {
+                    contributors.Add(loginProp.GetString() ?? string.Empty);
+                }
+            }
+
+            return contributors;
         }
     }
 }
