@@ -58,3 +58,6 @@ nunit-*.xml
 
 # MacOS
 .DS_Store
+
+# Result
+results/

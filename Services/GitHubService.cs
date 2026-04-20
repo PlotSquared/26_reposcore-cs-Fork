@@ -1,34 +1,74 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
-using Octokit;
 using Octokit.GraphQL;
 using Octokit.GraphQL.Model;
 
 namespace RepoScore.Services
 {
+    public enum GitHubIssuePrLabel
+    {
+        None,
+        Bug,
+        Documentation,
+        Duplicate,
+        Enhancement,
+        GoodFirstIssue,
+        HelpWanted,
+        Invalid,
+        Pinned,
+        Question,
+        Typo,
+        Wontfix
+    }
+
+    public class ClaimRecord
+    {
+        public int Number { get; set; }
+        public string Url { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public bool HasPr { get; set; }
+        public TimeSpan Remaining { get; set; }
+        public List<GitHubIssuePrLabel> Labels { get; set; } = new List<GitHubIssuePrLabel>();
+    }
+
+    public class ClaimsData
+    {
+        public Dictionary<string, List<ClaimRecord>> ClaimedMap { get; set; } = new();
+        public List<string> UnclaimedUrls { get; set; } = new();
+    }
+
+    public class PRRecord
+    {
+        public int Number { get; set; }
+        public string Url { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public List<GitHubIssuePrLabel> Labels { get; set; } = new List<GitHubIssuePrLabel>();
+    }
+
+    public class PRData
+    {
+        public Dictionary<string, List<PRRecord>> PullRequestsByAuthor { get; set; } = new();
+        public List<string> AllUrls { get; set; } = new();
+    }
+
     public class GitHubService
     {
-        private readonly Octokit.GraphQL.Connection _connection;
+        private readonly Connection _connection;
         private readonly string _owner;
         private readonly string _repo;
         private readonly string _token;
-        private readonly string[] _claimKeywords;
 
         private static readonly HttpClient s_httpClient = new()
         {
             BaseAddress = new Uri("https://api.github.com/")
         };
 
-        private static readonly string[] s_defaultClaimKeywords =
-            ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
-
-        private static readonly string[] s_docKeywords =
-            ["doc", "docs", "문서", "readme", "guide", "typo", "오타"];
+        private static readonly string[] s_claimKeywords = ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
 
         static GitHubService()
         {
@@ -36,392 +76,314 @@ namespace RepoScore.Services
             s_httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         }
 
-        public GitHubService(string owner, string repo, string token,
-            string[]? claimKeywords = null)
+        public GitHubService(string owner, string repo, string token)
         {
             _owner = owner;
-            _repo  = repo;
+            _repo = repo;
             _token = token ?? throw new ArgumentNullException(nameof(token));
-            _claimKeywords = (claimKeywords is { Length: > 0 })
-                ? claimKeywords
-                : s_defaultClaimKeywords;
-
-            _connection = new Octokit.GraphQL.Connection(
-                new Octokit.GraphQL.ProductHeaderValue("reposcore-cs"),
-                token
-            );
+            _connection = new Connection(new ProductHeaderValue("reposcore-cs"), token);
         }
 
-        public async Task<int> GetPullRequestCountAsync(string authorLogin)
+        public List<PRRecord> GetPullRequests(string authorLogin)
         {
-            var query =
-                new Query()
-                .Search(
-                    query: $"repo:{_owner}/{_repo} is:pr author:{authorLogin}",
-                    type: SearchType.Issue,
-                    first: 1)
-                .Select(x => x.IssueCount);
+            const string graphQL = @"
+                query($query: String!) {
+                  search(query: $query, type: ISSUE, first: 50) {
+                    nodes {
+                      ... on PullRequest {
+                        number
+                        title
+                        url
+                        labels(first: 10) {
+                          nodes { name }
+                        }
+                      }
+                    }
+                  }
+                }";
 
-            return await _connection.Run(query);
+            var requestBody = new { query = graphQL, variables = new { query = $"repo:{_owner}/{_repo} is:pr author:{authorLogin}" } };
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, "graphql") { Content = content };
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+            using var response = s_httpClient.Send(request);
+            if (!response.IsSuccessStatusCode) throw new Exception($"API 요청 실패: {response.StatusCode}");
+
+            using var stream = response.Content.ReadAsStream();
+            using var reader = new StreamReader(stream);
+            using var document = JsonDocument.Parse(reader.ReadToEnd());
+
+            var root = document.RootElement;
+            if (root.TryGetProperty("errors", out var errors)) throw new Exception("GraphQL 오류가 발생했습니다.");
+
+            var nodes = root.GetProperty("data").GetProperty("search").GetProperty("nodes");
+            var prRecords = new List<PRRecord>();
+
+            foreach (var node in nodes.EnumerateArray())
+            {
+                if (!node.TryGetProperty("number", out var numberProp)) continue;
+                var prNumber = numberProp.GetInt32();
+                var prTitle = node.GetProperty("title").GetString() ?? string.Empty;
+                var prUrl = node.GetProperty("url").GetString() ?? string.Empty;
+                var prLabels = new List<GitHubIssuePrLabel>();
+
+                if (node.TryGetProperty("labels", out var labelsProp) && labelsProp.TryGetProperty("nodes", out var labelNodes))
+                {
+                    foreach (var labelNode in labelNodes.EnumerateArray())
+                    {
+                        if (labelNode.TryGetProperty("name", out var nameProp))
+                        {
+                            var label = ParseGitHubLabel(nameProp.GetString() ?? string.Empty);
+                            if (label != GitHubIssuePrLabel.None) prLabels.Add(label);
+                        }
+                    }
+                }
+
+                prRecords.Add(new PRRecord
+                {
+                    Number = prNumber,
+                    Title = prTitle,
+                    Url = prUrl,
+                    Labels = prLabels
+                });
+            }
+
+            return prRecords;
         }
 
-        public async Task<int> GetIssueCountAsync(string authorLogin)
+        public List<ClaimRecord> GetClaims(string authorLogin)
         {
-            var query =
-                new Query()
-                .Search(
-                    query: $"repo:{_owner}/{_repo} is:issue author:{authorLogin}",
-                    type: SearchType.Issue,
-                    first: 1)
-                .Select(x => x.IssueCount);
+            const string graphQL = @"
+                query($query: String!) {
+                  search(query: $query, type: ISSUE, first: 50) {
+                    nodes {
+                      ... on Issue {
+                        number
+                        title
+                        url
+                        labels(first: 10) {
+                          nodes { name }
+                        }
+                      }
+                    }
+                  }
+                }";
 
-            return await _connection.Run(query);
+            var requestBody = new { query = graphQL, variables = new { query = $"repo:{_owner}/{_repo} is:issue author:{authorLogin}" } };
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, "graphql") { Content = content };
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+
+            using var response = s_httpClient.Send(request);
+            if (!response.IsSuccessStatusCode) throw new Exception($"API 요청 실패: {response.StatusCode}");
+
+            using var stream = response.Content.ReadAsStream();
+            using var reader = new StreamReader(stream);
+            using var document = JsonDocument.Parse(reader.ReadToEnd());
+
+            var root = document.RootElement;
+            if (root.TryGetProperty("errors", out var errors)) throw new Exception("GraphQL 오류가 발생했습니다.");
+
+            var nodes = root.GetProperty("data").GetProperty("search").GetProperty("nodes");
+            var claimRecords = new List<ClaimRecord>();
+
+            foreach (var node in nodes.EnumerateArray())
+            {
+                if (!node.TryGetProperty("number", out var numberProp)) continue;
+                var claimNumber = numberProp.GetInt32();
+                var claimTitle = node.GetProperty("title").GetString() ?? string.Empty;
+                var claimUrl = node.GetProperty("url").GetString() ?? string.Empty;
+                var claimLabels = new List<GitHubIssuePrLabel>();
+
+                if (node.TryGetProperty("labels", out var labelsProp) && labelsProp.TryGetProperty("nodes", out var labelNodes))
+                {
+                    foreach (var labelNode in labelNodes.EnumerateArray())
+                    {
+                        if (labelNode.TryGetProperty("name", out var nameProp))
+                        {
+                            var label = ParseGitHubLabel(nameProp.GetString() ?? string.Empty);
+                            if (label != GitHubIssuePrLabel.None) claimLabels.Add(label);
+                        }
+                    }
+                }
+
+                claimRecords.Add(new ClaimRecord
+                {
+                    Number = claimNumber,
+                    Title = claimTitle,
+                    Url = claimUrl,
+                    Labels = claimLabels
+                });
+            }
+
+            return claimRecords;
         }
 
-        public async Task<List<string>> GetPullRequestCommentsAsync(int prNumber)
+        public List<string> GetPullRequestComments(int prNumber)
         {
-            var query =
-                new Query()
-                .Repository(_owner, _repo)
-                .PullRequest(prNumber)
-                .Comments(first: 50)
-                .Nodes
-                .Select(c => c.Body);
-
-            var result = await _connection.Run(query);
-
-            return new List<string>(result);
+            var query = new Query().Repository(_owner, _repo).PullRequest(prNumber).Comments(first: 50).Nodes.Select(c => c.Body);
+            return new List<string>(_connection.Run(query).Result);
         }
 
-        private async Task<bool> HasLinkedPullRequestAsync(int issueNumber)
+        private bool HasLinkedPullRequest(int issueNumber)
         {
             var url = $"repos/{_owner}/{_repo}/issues/{issueNumber}/timeline";
-
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
             request.Headers.Accept.ParseAdd("application/vnd.github.mockingbird-preview+json");
 
-            HttpResponseMessage response;
             try
             {
-                response = await s_httpClient.SendAsync(request);
-            }
-            catch
-            {
-                return false;
-            }
+                using var response = s_httpClient.Send(request);
+                if (!response.IsSuccessStatusCode) return false;
 
-            if (!response.IsSuccessStatusCode)
-                return false;
+                using var stream = response.Content.ReadAsStream();
+                using var reader = new StreamReader(stream);
+                var body = reader.ReadToEnd();
 
-            var body = await response.Content.ReadAsStringAsync();
-            JsonDocument document;
-            try
-            {
-                document = JsonDocument.Parse(body);
-            }
-            catch (JsonException)
-            {
-                return false;
-            }
-
-            using (document)
-            {
+                using var document = JsonDocument.Parse(body);
                 var root = document.RootElement;
-                if (root.ValueKind != JsonValueKind.Array)
-                    return false;
+                if (root.ValueKind != JsonValueKind.Array) return false;
 
                 foreach (var evt in root.EnumerateArray())
                 {
-                    if (!evt.TryGetProperty("event", out var evtType))
-                        continue;
-
-                    if (evtType.GetString() == "cross-referenced"
+                    if (evt.TryGetProperty("event", out var evtType) && evtType.GetString() == "cross-referenced"
                         && evt.TryGetProperty("source", out var source)
-                        && source.TryGetProperty("type", out var sourceType)
-                        && sourceType.GetString() == "issue"
+                        && source.TryGetProperty("type", out var sourceType) && sourceType.GetString() == "issue"
                         && source.TryGetProperty("issue", out var linkedIssue)
                         && linkedIssue.TryGetProperty("pull_request", out _))
                     {
                         return true;
                     }
                 }
+                return false;
             }
-
-            return false;
+            catch { return false; }
         }
 
-        private static bool IsDocumentTask(string issueTitle)
+        private static bool IsDocumentTask(List<GitHubIssuePrLabel> issueLabels)
         {
-            var lower = issueTitle.ToLowerInvariant();
-            return s_docKeywords.Any(k => lower.Contains(k));
+            return issueLabels.Contains(GitHubIssuePrLabel.Documentation) || issueLabels.Contains(GitHubIssuePrLabel.Typo);
         }
 
-        private static string FormatRemainingTime(TimeSpan remaining)
+        private static GitHubIssuePrLabel ParseGitHubLabel(string labelName)
         {
-            if (remaining <= TimeSpan.Zero)
-                return "⌛ 기한 초과";
+            if (string.IsNullOrEmpty(labelName)) return GitHubIssuePrLabel.None;
 
-            return $"⏳ 남은 시간: {(int)remaining.TotalHours:D2}:{remaining.Minutes:D2}:{remaining.Seconds:D2}";
+            var normalized = labelName.ToLowerInvariant().Replace(" ", "").Replace("-", "");
+            switch (normalized)
+            {
+                case "bug": return GitHubIssuePrLabel.Bug;
+                case "documentation": return GitHubIssuePrLabel.Documentation;
+                case "duplicate": return GitHubIssuePrLabel.Duplicate;
+                case "enhancement": return GitHubIssuePrLabel.Enhancement;
+                case "good first issue": return GitHubIssuePrLabel.GoodFirstIssue;
+                case "help wanted": return GitHubIssuePrLabel.HelpWanted;
+                case "invalid": return GitHubIssuePrLabel.Invalid;
+                case "pinned": return GitHubIssuePrLabel.Pinned;
+                case "question": return GitHubIssuePrLabel.Question;
+                case "typo": return GitHubIssuePrLabel.Typo;
+                case "wontfix": return GitHubIssuePrLabel.Wontfix;
+                case "nolabels": return GitHubIssuePrLabel.None;
+                default: return GitHubIssuePrLabel.None;
+            }
         }
 
-        public async Task ShowRecentClaimsAsync(string mode = "issue")
+        public ClaimsData GetRecentClaimsData()
         {
-            var keywordFilter = string.Join(" OR ",
-                _claimKeywords.Select(k => $"\"{k}\""));
-
-            var searchQuery =
-                $"repo:{_owner}/{_repo} is:issue is:open in:comments {keywordFilter}";
-
             const string graphQL = @"
-                query($searchQuery: String!) {
-                  search(query: $searchQuery, type: ISSUE, first: 20) {
-                    nodes {
-                      ... on Issue {
-                        number
-                        title
-                        url
-                        comments(first: 10) {
-                          nodes {
-                            body
-                            createdAt
-                            author {
-                              login
-                            }
-                          }
-                        }
-                      }
+                query($owner: String!, $name: String!) {
+                  repository(owner: $owner, name: $name) {
+                    issues(first: 20, states: OPEN, orderBy: { field: CREATED_AT, direction: DESC }) {
+                      nodes { number, title, url, labels(first: 10) { nodes { name } }, comments(first: 10) { nodes { body, createdAt, author { login } } } }
                     }
                   }
-                }
-            ";
+                }";
 
-            var requestBody = new
-            {
-                query = graphQL,
-                variables = new { searchQuery }
-            };
+            var requestBody = new { query = graphQL, variables = new { owner = _owner, name = _repo } };
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
-            var content = new StringContent(
-                JsonSerializer.Serialize(requestBody),
-                Encoding.UTF8,
-                "application/json");
+            using var request = new HttpRequestMessage(HttpMethod.Post, "graphql") { Content = content };
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "graphql")
-            {
-                Content = content
-            };
-            request.Headers.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+            using var response = s_httpClient.Send(request);
+            if (!response.IsSuccessStatusCode) throw new Exception($"API 요청 실패: {response.StatusCode}");
 
-            HttpResponseMessage response;
-            try
-            {
-                response = await s_httpClient.SendAsync(request);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"GitHub 요청 실패: {ex.Message}");
-                return;
-            }
+            using var stream = response.Content.ReadAsStream();
+            using var reader = new StreamReader(stream);
+            using var document = JsonDocument.Parse(reader.ReadToEnd());
 
-            if (!response.IsSuccessStatusCode)
+            var root = document.RootElement;
+            if (root.TryGetProperty("errors", out var errors)) throw new Exception("GraphQL 오류가 발생했습니다.");
+
+            var nodes = root.GetProperty("data").GetProperty("repository").GetProperty("issues").GetProperty("nodes");
+            var now = DateTimeOffset.UtcNow;
+            var claimsData = new ClaimsData();
+
+            foreach (var issue in nodes.EnumerateArray())
             {
-                var errorText = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"GitHub API 요청 실패: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
-                if (!string.IsNullOrWhiteSpace(errorText))
+                var issueUrl = issue.GetProperty("url").GetString() ?? "";
+                var issueNumber = issue.GetProperty("number").GetInt32();
+                var issueLabels = new List<GitHubIssuePrLabel>();
+                var isClaimed = false;
+
+                if (issue.TryGetProperty("labels", out var labelsProp) && labelsProp.TryGetProperty("nodes", out var labelNodes))
                 {
-                    Console.WriteLine("응답 본문:");
-                    Console.WriteLine(errorText);
-                }
-                return;
-            }
-
-            var body = await response.Content.ReadAsStringAsync();
-            JsonDocument document;
-            try
-            {
-                document = JsonDocument.Parse(body);
-            }
-            catch (JsonException ex)
-            {
-                Console.WriteLine($"응답 JSON 파싱 실패: {ex.Message}");
-                return;
-            }
-
-            using (document)
-            {
-                var root = document.RootElement;
-                if (root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
-                {
-                    Console.WriteLine("GraphQL 오류가 발생했습니다:");
-                    foreach (var error in errors.EnumerateArray())
+                    foreach (var labelNode in labelNodes.EnumerateArray())
                     {
-                        if (error.TryGetProperty("message", out var errorMessage) && errorMessage.ValueKind == JsonValueKind.String)
-                            Console.WriteLine($" - {errorMessage.GetString()}");
-                        else
-                            Console.WriteLine($" - {error}");
+                        if (labelNode.TryGetProperty("name", out var nameProp))
+                        {
+                            var labelName = nameProp.GetString() ?? "";
+                            var label = ParseGitHubLabel(labelName);
+                            if (label != GitHubIssuePrLabel.None)
+                            {
+                                issueLabels.Add(label);
+                            }
+                        }
                     }
-                    return;
                 }
 
-                if (!root.TryGetProperty("data", out var data))
+                foreach (var comment in issue.GetProperty("comments").GetProperty("nodes").EnumerateArray())
                 {
-                    Console.WriteLine("GitHub 응답에 data 필드가 없습니다.");
-                    return;
-                }
+                    var commentBody = comment.GetProperty("body").GetString() ?? "";
+                    if (!DateTimeOffset.TryParse(comment.GetProperty("createdAt").GetString(), out var claimedAt)) continue;
+                    if ((now - claimedAt).TotalHours > 48) continue;
 
-                if (!data.TryGetProperty("search", out var search))
-                {
-                    Console.WriteLine("GitHub 응답에 search 필드가 없습니다.");
-                    return;
-                }
+                    var login = comment.GetProperty("author").TryGetProperty("login", out var lp) ? lp.GetString() ?? "unknown" : "unknown";
 
-                if (!search.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
-                {
-                    Console.WriteLine("GitHub 응답에 search.nodes 필드가 없습니다.");
-                    return;
-                }
-
-                var now = DateTimeOffset.UtcNow;
-                Console.WriteLine("📌 최근 이슈 선점 현황\n");
-
-                var claimMap = new Dictionary<string, List<(string Url, bool HasPr, TimeSpan Remaining)>>();
-
-                foreach (var issue in nodes.EnumerateArray())
-                {
-                    if (!issue.TryGetProperty("url", out var urlProperty) || urlProperty.ValueKind != JsonValueKind.String)
-                        continue;
-
-                    var issueUrl = urlProperty.GetString() ?? string.Empty;
-
-                    var issueNumber = issue.TryGetProperty("number", out var numProp)
-                        ? numProp.GetInt32()
-                        : 0;
-
-                    var issueTitle = issue.TryGetProperty("title", out var titleProp)
-                        && titleProp.ValueKind == JsonValueKind.String
-                        ? titleProp.GetString() ?? string.Empty
-                        : string.Empty;
-
-                    if (!issue.TryGetProperty("comments", out var comments) || comments.ValueKind != JsonValueKind.Object)
-                        continue;
-
-                    if (!comments.TryGetProperty("nodes", out var commentNodes) || commentNodes.ValueKind != JsonValueKind.Array)
-                        continue;
-
-                    foreach (var comment in commentNodes.EnumerateArray())
+                    if (s_claimKeywords.Any(k => commentBody.Contains(k, StringComparison.OrdinalIgnoreCase)))
                     {
-                        if (!comment.TryGetProperty("body", out var bodyProperty) || bodyProperty.ValueKind != JsonValueKind.String)
-                            continue;
+                        var deadlineHours = IsDocumentTask(issueLabels) ? 24.0 : 48.0;
+                        var remaining = claimedAt.AddHours(deadlineHours) - now;
+                        var hasPr = issueNumber > 0 && HasLinkedPullRequest(issueNumber);
 
-                        var commentBody = bodyProperty.GetString() ?? string.Empty;
-
-                        if (!comment.TryGetProperty("createdAt", out var createdAtProperty) || createdAtProperty.ValueKind != JsonValueKind.String)
-                            continue;
-
-                        if (!DateTimeOffset.TryParse(createdAtProperty.GetString(), out var claimedAt))
-                            continue;
-
-                        if ((now - claimedAt).TotalHours > 48)
-                            continue;
-
-                        if (!comment.TryGetProperty("author", out var author) || author.ValueKind != JsonValueKind.Object)
-                            continue;
-
-                        var login = author.TryGetProperty("login", out var loginProperty) && loginProperty.ValueKind == JsonValueKind.String
-                            ? loginProperty.GetString() ?? "unknown"
-                            : "unknown";
-
-                        if (!_claimKeywords.Any(k => commentBody.Contains(k, StringComparison.OrdinalIgnoreCase)))
-                            continue;
-
-                        // 작업 유형에 따른 기한 결정
-                        bool isDoc = IsDocumentTask(issueTitle);
-                        double deadlineHours = isDoc ? 24.0 : 48.0;
-                        var deadline = claimedAt.AddHours(deadlineHours);
-                        var remaining = deadline - now;
-
-                        bool hasPr = issueNumber > 0 && await HasLinkedPullRequestAsync(issueNumber);
-
-                        if (!claimMap.ContainsKey(login))
-                            claimMap[login] = new List<(string, bool, TimeSpan)>();
-                        claimMap[login].Add((issueUrl, hasPr, remaining));
+                        if (!claimsData.ClaimedMap.ContainsKey(login)) claimsData.ClaimedMap[login] = new List<ClaimRecord>();
+                        claimsData.ClaimedMap[login].Add(new ClaimRecord { Url = issueUrl, HasPr = hasPr, Remaining = remaining, Labels = issueLabels });
+                        isClaimed = true;
                         break;
                     }
                 }
 
-                if (claimMap.Count == 0)
-                {
-                    Console.WriteLine("최근 48시간 내 선점된 이슈가 없습니다.");
-                }
-                else if (mode == "user")
-                {
-                    foreach (var (login, claims) in claimMap)
-                    {
-                        Console.WriteLine($"👤 {login}");
-                        foreach (var (url, hasPr, remaining) in claims)
-                        {
-                            Console.WriteLine($" - {url}");
-                            if (hasPr)
-                                Console.WriteLine($"   ✅ PR 생성됨");
-                            else
-                                Console.WriteLine($"   {FormatRemainingTime(remaining)}");
-                        }
-                    }
-                }
-                else
-                {
-                    var claimedUrls = new HashSet<string>(
-                        claimMap.Values.SelectMany(c => c.Select(x => x.Url)));
-
-                    var unclaimedIssues = new List<string>();
-                    foreach (var issue in nodes.EnumerateArray())
-                    {
-                        if (!issue.TryGetProperty("url", out var u) || u.ValueKind != JsonValueKind.String)
-                            continue;
-                        var url = u.GetString() ?? "";
-                        if (!claimedUrls.Contains(url))
-                            unclaimedIssues.Add(url);
-                    }
-
-                    Console.WriteLine("📋 미선점 이슈");
-                    foreach (var url in unclaimedIssues)
-                        Console.WriteLine($" - {url}");
-                    Console.WriteLine();
-
-                    Console.WriteLine("📌 선점된 이슈");
-                    foreach (var (login, claims) in claimMap)
-                    {
-                        Console.WriteLine($"👤 {login}");
-                        foreach (var (url, hasPr, remaining) in claims)
-                        {
-                            Console.WriteLine($" - {url}");
-                            if (hasPr)
-                                Console.WriteLine($"   ✅ PR 생성됨");
-                            else
-                                Console.WriteLine($"   {FormatRemainingTime(remaining)}");
-                        }
-                    }
-                }
+                if (!isClaimed) claimsData.UnclaimedUrls.Add(issueUrl);
             }
+
+            return claimsData;
         }
 
-        public async Task<List<string>> GetAllContributorsAsync()
+        public List<string> GetAllContributors()
         {
             var request = new HttpRequestMessage(HttpMethod.Get, $"repos/{_owner}/{_repo}/contributors");
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
 
-            var response = await s_httpClient.SendAsync(request);
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"기여자 목록 조회 실패: HTTP {(int)response.StatusCode}");
-                return new List<string>();
-            }
+            using var response = s_httpClient.Send(request);
+            if (!response.IsSuccessStatusCode) return new List<string>();
 
-            var json = await response.Content.ReadAsStringAsync();
-            using var document = JsonDocument.Parse(json);
+            using var stream = response.Content.ReadAsStream();
+            using var reader = new StreamReader(stream);
+            using var document = JsonDocument.Parse(reader.ReadToEnd());
 
             var contributors = new List<string>();
             foreach (var element in document.RootElement.EnumerateArray())
@@ -429,7 +391,6 @@ namespace RepoScore.Services
                 if (element.TryGetProperty("login", out var loginProp))
                     contributors.Add(loginProp.GetString() ?? string.Empty);
             }
-
             return contributors;
         }
     }

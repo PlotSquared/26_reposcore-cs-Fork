@@ -25,10 +25,10 @@ dotnet run -- oss2026hnu/reposcore-cs
 # 개인 액세스 토큰(PAT) 사용 예시
 dotnet run -- oss2026hnu/reposcore-cs --token YOUR_GITHUB_TOKEN
 
-# 최근 이슈 선점 현황 조회 예시
-dotnet run -- oss2026hnu/reposcore-cs --show-claims              # 이슈별 (기본값)
-dotnet run -- oss2026hnu/reposcore-cs --show-claims=issue        # 이슈별 (명시)
-dotnet run -- oss2026hnu/reposcore-cs --show-claims=user         # 유저별
+# 최근 이슈 선점 현황 조회 예시 (토큰 정보 필수)
+dotnet run -- oss2026hnu/reposcore-cs --show-claims= --token YOUR_GITHUB_TOKEN      # 이슈별 (기본값)
+dotnet run -- oss2026hnu/reposcore-cs --show-claims=issue --token YOUR_GITHUB_TOKEN # 이슈별 (명시)
+dotnet run -- oss2026hnu/reposcore-cs --show-claims=user --token YOUR_GITHUB_TOKEN  # 유저별
 
 # 도움말 출력 (모든 인수 및 옵션 확인)
 dotnet run -- --help
@@ -36,20 +36,43 @@ dotnet run -- --help
 
 ## Synopsis
 
+<!-- synopsis:start -->
+
 ```text
-Usage: reposcore-cs <repo> [[--token <String>]]
+사용법: reposcore-cs [--token <String>] [--show-claims <String>] [--help] [--version] repo
 
-Arguments:
-  0: repo    대상 GitHub 저장소 (예: owner/repo)
+reposcore-cs
 
-Options:
-  -t, --token <String>    GitHub 개인 액세스 토큰 (PAT)
-  --show-claims           최근 이슈 선점 현황 조회
-  -h, --help              Show help message
-  --version               Show version
+인자:
+  0: repo    대상 저장소 (예: owner/repo) (필수)
+
+옵션:
+  -t, --token <String>      GitHub Personal Access Token (미입력 시 환경변수 GITHUB_TOKEN 사용)
+  --show-claims <String>    최근 이슈 선점 현황 조회 (issue|user, 기본값: issue)
+  -h, --help                도움말을 봅니다.
+  --version                 버전 정보를 봅니다.
 ```
 
+<!-- synopsis:end -->
+
 > 현재 개발 진행 중으로 상세 분석 기능은 순차적으로 업데이트될 예정입니다.
+
+## Synopsis 업데이트
+
+Synopsis 섹션은 CLI 도움말을 자동으로 반영합니다. 프로그램 옵션 또는 실행 방식이 변경되면 다음 명령어로 업데이트하세요:
+
+```bash
+# 개별 업데이트
+python tools/update-synopsis.py
+
+# 또는 Makefile로
+make synopsis
+
+# docs와 함께 업데이트
+make
+```
+
+> ⚠️ `README.md`의 Synopsis 섹션은 수동으로 수정하지 마세요. 프로그램 옵션, 인수, 또는 도움말 출력이 변경된 경우 반드시 위 명령어를 실행하여 Synopsis를 자동 갱신해야 합니다.
 
 ## 참고자료
 

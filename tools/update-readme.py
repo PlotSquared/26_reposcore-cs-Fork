@@ -3,7 +3,7 @@
 docs/ 폴더의 마크다운 파일을 탐색하여 /docs/README.md의 문서 목록을 자동으로 갱신합니다.
 
 사용법 (프로젝트 루트에서):
-    python docs/update_docs_readme.py
+    python tools/update_docs_readme.py
 
     또는 Makefile을 통해 (변경 감지 포함):
     make docs
@@ -19,7 +19,10 @@ import re
 from pathlib import Path
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
-DOCS_DIR    = Path(__file__).parent
+DOCS_DIR    = Path(__file__).parent.parent / "docs"
+TEMPLATE_DIR = DOCS_DIR / "templates"
+
+TEMPLATE_README = TEMPLATE_DIR / "README-template.md"
 README_PATH = DOCS_DIR / "README.md"
 
 MARKER_START = "<!-- DOC_LIST_START -->"
@@ -77,20 +80,21 @@ def build_list_block(entries: list[tuple[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def update_readme(readme_path: Path, new_block: str) -> None:
+def update_readme(readme_path: Path,readme_template_path: Path, new_block: str) -> None:
     """README.md의 마커 구간을 새 목록으로 교체합니다."""
-    if not readme_path.exists():
+    if not readme_template_path.exists():
         content = DEFAULT_README_TEMPLATE.format(
             start=MARKER_START, end=MARKER_END
         )
-        readme_path.write_text(content, encoding="utf-8")
+        readme_template_path.write_text(content, encoding="utf-8")
         print(f"[생성] {readme_path}")
-
-    original = readme_path.read_text(encoding="utf-8")
+        
+    
+    original = readme_template_path.read_text(encoding="utf-8")
 
     if MARKER_START not in original:
         appended = original.rstrip() + f"\n\n{MARKER_START}\n{MARKER_END}\n"
-        readme_path.write_text(appended, encoding="utf-8")
+        readme_template_path.write_text(appended, encoding="utf-8")
         original = appended
         print("[안내] 마커가 없어 파일 끝에 추가했습니다.")
 
@@ -108,6 +112,11 @@ def update_readme(readme_path: Path, new_block: str) -> None:
 def main() -> None:
     if not DOCS_DIR.is_dir():
         raise FileNotFoundError(f"docs 폴더를 찾을 수 없습니다: {DOCS_DIR}")
+    if not TEMPLATE_DIR.is_dir():
+        raise FileNotFoundError(f"templates 폴더를 찾을 수 없습니다: {TEMPLATE_DIR}")
+    if not TEMPLATE_README.is_file():
+        raise FileNotFoundError(f"README 템플릿을 찾을 수 없습니다: {TEMPLATE_README}")
+    
 
     entries = collect_docs(DOCS_DIR)
     print(f"[탐색] {len(entries)}개 문서 발견:")
@@ -115,7 +124,7 @@ def main() -> None:
         print(f"  • {name}: {title}")
 
     new_block = build_list_block(entries)
-    update_readme(README_PATH, new_block)
+    update_readme(README_PATH, TEMPLATE_README, new_block)
     print("완료!")
 
 
