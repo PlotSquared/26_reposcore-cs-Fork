@@ -26,12 +26,22 @@ namespace RepoScore.Services
         Wontfix
     }
 
+    public enum IssueClosedStateReason
+    {
+        None,
+        Completed,
+        Duplicate,
+        NotPlanned
+    }
+
+    // 구조화된 반환을 위한 데이터 모델
     public class ClaimRecord
     {
         public int Number { get; set; }
         public string Url { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public bool HasPr { get; set; }
+        public IssueClosedStateReason ClosedReason { get; set; } = IssueClosedStateReason.None;
         public TimeSpan Remaining { get; set; }
         public List<GitHubIssuePrLabel> Labels { get; set; } = new List<GitHubIssuePrLabel>();
     }
@@ -47,6 +57,7 @@ namespace RepoScore.Services
         public int Number { get; set; }
         public string Url { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public bool IsMerged { get; set; } = false;
         public List<GitHubIssuePrLabel> Labels { get; set; } = new List<GitHubIssuePrLabel>();
     }
 
@@ -94,6 +105,7 @@ namespace RepoScore.Services
                         number
                         title
                         url
+                        merged
                         labels(first: 10) {
                           nodes { name }
                         }
@@ -146,6 +158,7 @@ namespace RepoScore.Services
                     Number = prNumber,
                     Title = prTitle,
                     Url = prUrl,
+                    IsMerged = node.TryGetProperty("merged", out var mergedProp) ? mergedProp.GetBoolean() : false,
                     Labels = prLabels
                 });
             }
@@ -155,21 +168,22 @@ namespace RepoScore.Services
 
         public List<ClaimRecord> GetClaims(string authorLogin)
         {
-            const string graphQL = @"
-                query($query: String!) {
-                  search(query: $query, type: ISSUE, first: 50) {
-                    nodes {
-                      ... on Issue {
-                        number
-                        title
-                        url
-                        labels(first: 10) {
-                          nodes { name }
+                const string graphQL = @"
+                    query($query: String!) {
+                    search(query: $query, type: ISSUE, first: 50) {
+                        nodes {
+                        ... on Issue {
+                            number
+                            title
+                            url
+                            stateReason
+                            labels(first: 10) {
+                            nodes { name }
+                            }
                         }
-                      }
+                        }
                     }
-                  }
-                }";
+                    }";
 
             var requestBody = new { query = graphQL, variables = new { query = $"repo:{_owner}/{_repo} is:issue author:{authorLogin}" } };
             var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
@@ -196,7 +210,22 @@ namespace RepoScore.Services
                 var claimNumber = numberProp.GetInt32();
                 var claimTitle = node.GetProperty("title").GetString() ?? string.Empty;
                 var claimUrl = node.GetProperty("url").GetString() ?? string.Empty;
+                var claimClosedReason = IssueClosedStateReason.None;
                 var claimLabels = new List<GitHubIssuePrLabel>();
+
+                // closedReason 처리
+                if (node.TryGetProperty("stateReason", out var closedReasonProp) && closedReasonProp.ValueKind != JsonValueKind.Null)
+                {
+                    var reasonStr = closedReasonProp.GetString() ?? string.Empty;
+                    var reason = reasonStr.ToUpperInvariant();
+                    switch(reason)
+                    {
+                        case "COMPLETED": claimClosedReason = IssueClosedStateReason.Completed; break;
+                        case "DUPLICATE": claimClosedReason = IssueClosedStateReason.Duplicate; break;
+                        case "NOT_PLANNED": claimClosedReason = IssueClosedStateReason.NotPlanned; break;
+                        default: claimClosedReason = IssueClosedStateReason.None; break;
+                    };
+                }
 
                 if (node.TryGetProperty("labels", out var labelsProp) && labelsProp.TryGetProperty("nodes", out var labelNodes))
                 {
@@ -215,6 +244,7 @@ namespace RepoScore.Services
                     Number = claimNumber,
                     Title = claimTitle,
                     Url = claimUrl,
+                    ClosedReason = claimClosedReason,
                     Labels = claimLabels
                 });
             }
