@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Octokit; 
 using Octokit.GraphQL;
 using Octokit.GraphQL.Model;
@@ -60,6 +64,8 @@ namespace RepoScore.Services
         private readonly Octokit.GitHubClient _restClient;
         private readonly string _owner;
         private readonly string _repo;
+        private readonly string _token;
+        private static readonly HttpClient s_httpClient = new HttpClient();
 
         private static readonly string[] s_claimKeywords = ["제가 하겠습니다", "진행하겠습니다", "할게요", "I'll take this"];
 
@@ -67,6 +73,7 @@ namespace RepoScore.Services
         {
             _owner = owner;
             _repo = repo;
+            _token = token;
             if (string.IsNullOrEmpty(token)) throw new ArgumentNullException(nameof(token));
 
             // 1. GraphQL 커넥션 초기화
@@ -115,47 +122,155 @@ namespace RepoScore.Services
 
         public List<ClaimRecord> GetClaims(string authorLogin)
         {
-            var query = new Octokit.GraphQL.Query()
-                .Search(query: $"repo:{_owner}/{_repo} is:issue author:{authorLogin}", type: SearchType.Issue, first: 50)
-                .Nodes
-                .OfType<Octokit.GraphQL.Model.Issue>()
-                .Select(issue => new
-                {
-                    issue.Number,
-                    issue.Title,
-                    issue.Url,
-                    issue.StateReason, // main 브랜치의 closedReason 요구사항 통합
-                    Labels = issue.Labels(10, null, null, null, null).Nodes.Select(l => l.Name).ToList()
-                });
+            // HttpClient와 JsonDocument를 사용하여 직접 GraphQL API 호출
+            const string graphQLQuery = @"
+                query($search: String!) {
+                  search(query: $search, type: ISSUE, first: 50) {
+                    nodes {
+                      ... on Issue {
+                        number
+                        title
+                        url
+                        stateReason
+                        labels(first: 10) {
+                          nodes {
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            ";
 
-            var result = _graphQLConnection.Run(query).Result;
+            var requestBody = new
+            {
+                query = graphQLQuery,
+                variables = new { search = $"repo:{_owner}/{_repo} is:issue author:{authorLogin}" }
+            };
+
             var claimRecords = new List<ClaimRecord>();
 
-            foreach (var issue in result)
+            try
             {
-                var claimClosedReason = IssueClosedStateReason.None;
-                
-                // GraphQL 열거형 데이터를 내부 열거형 모델로 매핑
-                if (issue.StateReason.HasValue)
+                var jsonContent = new StringContent(
+                    JsonSerializer.Serialize(requestBody),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var request = new HttpRequestMessage(HttpMethod.Post, "https://api.github.com/graphql")
                 {
-                    var reasonStr = issue.StateReason.Value.ToString().ToUpperInvariant();
-                    claimClosedReason = reasonStr switch
-                    {
-                        "COMPLETED" => IssueClosedStateReason.Completed,
-                        "DUPLICATE" => IssueClosedStateReason.Duplicate,
-                        "NOTPLANNED" or "NOT_PLANNED" => IssueClosedStateReason.NotPlanned,
-                        _ => IssueClosedStateReason.None
-                    };
+                    Content = jsonContent
+                };
+                request.Headers.Authorization = 
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+                request.Headers.Add("User-Agent", "reposcore-cs");
+
+                var response = s_httpClient.SendAsync(request).Result;
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"GitHub API 요청 실패: HTTP {(int)response.StatusCode}");
+                    return claimRecords;
                 }
 
-                claimRecords.Add(new ClaimRecord
+                var body = response.Content.ReadAsStringAsync().Result;
+                using var document = JsonDocument.Parse(body);
+                var root = document.RootElement;
+
+                // 에러 확인
+                if (root.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
                 {
-                    Number = issue.Number,
-                    Title = issue.Title,
-                    Url = issue.Url,
-                    ClosedReason = claimClosedReason,
-                    Labels = issue.Labels.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList()
-                });
+                    if (errors.GetArrayLength() > 0)
+                    {
+                        Console.WriteLine("GraphQL 오류가 발생했습니다:");
+                        foreach (var error in errors.EnumerateArray())
+                        {
+                            if (error.TryGetProperty("message", out var errorMessage))
+                            {
+                                Console.WriteLine($" - {errorMessage.GetString()}");
+                            }
+                        }
+                        return claimRecords;
+                    }
+                }
+
+                // 데이터 추출
+                if (!root.TryGetProperty("data", out var data) ||
+                    !data.TryGetProperty("search", out var search) ||
+                    !search.TryGetProperty("nodes", out var nodes))
+                {
+                    return claimRecords;
+                }
+
+                foreach (var issue in nodes.EnumerateArray())
+                {
+                    var claimClosedReason = IssueClosedStateReason.None;
+
+                    // stateReason을 문자열로 직접 처리 (DUPLICATE 포함 모든 값 수용)
+                    if (issue.TryGetProperty("stateReason", out var stateReasonProp) && 
+                        stateReasonProp.ValueKind == JsonValueKind.String)
+                    {
+                        var reasonStr = stateReasonProp.GetString()?.ToUpperInvariant() ?? "";
+                        claimClosedReason = reasonStr switch
+                        {
+                            "COMPLETED" => IssueClosedStateReason.Completed,
+                            "DUPLICATE" => IssueClosedStateReason.Duplicate,
+                            "NOTPLANNED" or "NOT_PLANNED" => IssueClosedStateReason.NotPlanned,
+                            _ => IssueClosedStateReason.None
+                        };
+                    }
+
+                    // 라벨 추출
+                    var labels = new List<GitHubIssuePrLabel>();
+                    if (issue.TryGetProperty("labels", out var labelsObj) &&
+                        labelsObj.TryGetProperty("nodes", out var labelNodes))
+                    {
+                        foreach (var label in labelNodes.EnumerateArray())
+                        {
+                            if (label.TryGetProperty("name", out var labelName))
+                            {
+                                var parsedLabel = ParseGitHubLabel(labelName.GetString() ?? "");
+                                if (parsedLabel != GitHubIssuePrLabel.None)
+                                {
+                                    labels.Add(parsedLabel);
+                                }
+                            }
+                        }
+                    }
+
+                    var number = 0;
+                    var title = string.Empty;
+                    var url = string.Empty;
+
+                    if (issue.TryGetProperty("number", out var numberProp) && numberProp.ValueKind == JsonValueKind.Number)
+                    {
+                        number = numberProp.GetInt32();
+                    }
+
+                    if (issue.TryGetProperty("title", out var titleProp) && titleProp.ValueKind == JsonValueKind.String)
+                    {
+                        title = titleProp.GetString() ?? "";
+                    }
+
+                    if (issue.TryGetProperty("url", out var urlProp) && urlProp.ValueKind == JsonValueKind.String)
+                    {
+                        url = urlProp.GetString() ?? "";
+                    }
+
+                    claimRecords.Add(new ClaimRecord
+                    {
+                        Number = number,
+                        Title = title,
+                        Url = url,
+                        ClosedReason = claimClosedReason,
+                        Labels = labels
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetClaims 메서드 실행 중 오류 발생: {ex.Message}");
             }
 
             return claimRecords;
