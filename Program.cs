@@ -16,7 +16,8 @@ app.AddCommand((
     [Option('f', Description = "출력 형식 (csv, txt)")] string format = "csv",
     [Option('o', Description = "출력 디렉토리 경로")] string output = "./results",
     [Option(Description = "정렬 기준 (score | id)")] string sortBy = "score",
-    [Option(Description = "정렬 방법 (asc | desc)")] string sortOrder = "desc"
+    [Option(Description = "정렬 방법 (asc | desc)")] string sortOrder = "desc",
+    [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null
 ) =>
 {
     // 1. 토큰 및 저장소 검증
@@ -28,7 +29,12 @@ app.AddCommand((
 
     string ownerName = parts[0];
     string repoName = parts[1];
-    var service = new GitHubService(ownerName, repoName, token);
+
+    string[]? parsedKeywords = keywords != null
+        ? keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        : null;
+
+    var service = new GitHubService(ownerName, repoName, token, parsedKeywords);
 
     try
     {
@@ -177,7 +183,6 @@ static string BuildTextReport(
 }
 
 // 이슈 선점 현황 리포트를 문자열로 생성하는 메서드
-// 콘솔 출력과 파일 저장 모두 이 메서드를 통해 동일한 내용을 사용합니다.
 static string BuildClaimsReport(ClaimsData data, string mode)
 {
     var sb = new StringBuilder();
