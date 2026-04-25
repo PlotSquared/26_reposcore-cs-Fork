@@ -22,10 +22,10 @@ app.AddCommand((
 {
     // 1. 토큰 및 저장소 검증
     token ??= Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-    if (string.IsNullOrEmpty(token)) { Console.WriteLine("오류: GitHub 토큰이 필요합니다."); return; }
+    if (string.IsNullOrEmpty(token)) { Console.Error.WriteLine("오류: GitHub 토큰이 필요합니다."); return; }
 
     var parts = repo.Split('/');
-    if (parts.Length != 2) { Console.WriteLine("오류: 저장소 이름은 'owner/repo' 형식이어야 합니다."); return; }
+    if (parts.Length != 2) { Console.Error.WriteLine("오류: 저장소 이름은 'owner/repo' 형식이어야 합니다."); return; }
 
     string ownerName = parts[0];
     string repoName = parts[1];
@@ -41,7 +41,7 @@ app.AddCommand((
         // 2. 이슈 선점 현황 조회 모드
         if (claims != null)
         {
-            Console.WriteLine($"[{ownerName}/{repoName}] 최근 이슈 선점 현황을 조회합니다...\n");
+            Console.Error.WriteLine($"[{ownerName}/{repoName}] 최근 이슈 선점 현황을 조회합니다...\n");
             var mode = string.IsNullOrEmpty(claims) ? "issue" : claims;
 
             var claimsData = service.GetRecentClaimsData();
@@ -51,9 +51,9 @@ app.AddCommand((
         }
 
         // 3. 전체 기여자 점수 산출
-        Console.WriteLine($"🔍 {repo} 기여자 데이터 수집 및 분석 중...");
+        Console.Error.WriteLine($"🔍 {repo} 기여자 데이터 수집 및 분석 중...");
         List<string> contributors = service.GetAllContributors();
-        if (contributors.Count == 0) { Console.WriteLine("조회된 기여자가 없습니다."); return; }
+        if (contributors.Count == 0) { Console.Error.WriteLine("조회된 기여자가 없습니다."); return; }
 
         var reportData = new List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)>();
 
@@ -94,7 +94,7 @@ app.AddCommand((
 
         string csvPath = Path.Combine(output, "results.csv");
         File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
-        Console.WriteLine($"✅ 기본 데이터(CSV) 저장 완료: {csvPath}");
+        Console.Error.WriteLine($"✅ 기본 데이터(CSV) 저장 완료: {csvPath}");
 
         // txt 파일 생성
         if (format.ToLower() == "txt")
@@ -103,12 +103,12 @@ app.AddCommand((
             string txtContent = BuildTextReport(repo, reportData);
 
             File.WriteAllText(txtPath, txtContent, Encoding.UTF8);
-            Console.WriteLine($"✅ 가독성 리포트(TXT) 추가 저장 완료: {txtPath}");
+            Console.Error.WriteLine($"✅ 가독성 리포트(TXT) 추가 저장 완료: {txtPath}");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"데이터 처리 중 오류 발생: {ex.Message}");
+        Console.Error.WriteLine($"데이터 처리 중 오류 발생: {ex.Message}");
     }
 });
 

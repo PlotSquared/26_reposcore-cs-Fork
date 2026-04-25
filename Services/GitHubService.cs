@@ -358,7 +358,7 @@ namespace RepoScore.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"기여자 목록 조회 실패: {ex.Message}");
+                Console.Error.WriteLine($"기여자 목록 조회 실패: {ex.Message}");
                 return new List<string>();
             }
         }
