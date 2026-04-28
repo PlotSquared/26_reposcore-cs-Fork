@@ -26,9 +26,9 @@ dotnet run -- oss2026hnu/reposcore-cs
 dotnet run -- oss2026hnu/reposcore-cs --token YOUR_GITHUB_TOKEN
 
 # 최근 이슈 선점 현황 조회 예시 (토큰 정보 필수)
-dotnet run -- oss2026hnu/reposcore-cs --show-claims= --token YOUR_GITHUB_TOKEN      # 이슈별 (기본값)
-dotnet run -- oss2026hnu/reposcore-cs --show-claims=issue --token YOUR_GITHUB_TOKEN # 이슈별 (명시)
-dotnet run -- oss2026hnu/reposcore-cs --show-claims=user --token YOUR_GITHUB_TOKEN  # 유저별
+dotnet run -- oss2026hnu/reposcore-cs --claims= --token YOUR_GITHUB_TOKEN      # 이슈별 (기본값)
+dotnet run -- oss2026hnu/reposcore-cs --claims=issue --token YOUR_GITHUB_TOKEN # 이슈별 (명시)
+dotnet run -- oss2026hnu/reposcore-cs --claims=user --token YOUR_GITHUB_TOKEN  # 유저별
 
 # 도움말 출력 (모든 인수 및 옵션 확인)
 dotnet run -- --help
@@ -39,22 +39,23 @@ dotnet run -- --help
 <!-- synopsis:start -->
 
 ```text
-사용법: reposcore-cs [--token <String>] [--show-claims <String>] [--format <String>] [--output-dir <String>] [--sort-by <String>] [--sort-order <String>] [--help] [--version] repo
+Usage: reposcore-cs [--token <String>] [--claims <String>] [--format <String>] [--output <String>] [--sort-by <String>] [--sort-order <String>] [--keywords <String>] [--help] [--version] repo
 
 reposcore-cs
 
-인자:
-  0: repo    대상 저장소 (예: owner/repo) (필수)
+Arguments:
+  0: repo    대상 저장소 (예: owner/repo) (Required)
 
-옵션:
-  -t, --token <String>         GitHub Token (미입력시 GITHUB_TOKEN 사용)
-  --show-claims <String>       최근 이슈 선점 현황 조회 (issue|user)
-  -f, --format <String>        출력 형식 (csv, txt) (기본값: csv)
-  -o, --output-dir <String>    출력 디렉토리 경로 (기본값: ./results)
-  --sort-by <String>           정렬 기준 (score | id, 기본값: score) (기본값: score)
-  --sort-order <String>        정렬 방법 (asc | desc, 기본값: desc) (기본값: desc)
-  -h, --help                   도움말을 봅니다.
-  --version                    버전 정보를 봅니다.
+Options:
+  -t, --token <String>     GitHub Token (미입력시 GITHUB_TOKEN 사용)
+  --claims <String>        최근 이슈 선점 현황 조회 (issue|user)
+  -f, --format <String>    출력 형식 (csv, txt) (Default: csv)
+  -o, --output <String>    출력 디렉토리 경로 (Default: ./results)
+  --sort-by <String>       정렬 기준 (score | id) (Default: score)
+  --sort-order <String>    정렬 방법 (asc | desc) (Default: desc)
+  --keywords <String>      이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)
+  -h, --help               Show help message
+  --version                Show version
 ```
 
 <!-- synopsis:end -->
