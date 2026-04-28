@@ -6,6 +6,7 @@ using System.Text;
 using Cocona;
 using RepoScore.Data;
 using RepoScore.Services;
+using RepoScore.Utils;
 
 CoconaApp.Run((
     [Argument(Description = "대상 저장소 (예: owner/repo)")] string repo,
@@ -41,7 +42,7 @@ CoconaApp.Run((
             var mode = string.IsNullOrEmpty(claims) ? "issue" : claims;
 
             var claimsData = service.GetRecentClaimsData();
-            var report = BuildClaimsReport(claimsData, mode);
+            var report = ReportFormatter.BuildClaimsReport(claimsData, mode);
             Console.Write(report);
             return;
         }
@@ -113,7 +114,7 @@ CoconaApp.Run((
         CacheManager.SaveCache(cachePath, cache);
         Console.Error.WriteLine($"캐시 갱신 및 저장 완료: {cachePath}");
 
-        reportData = SortReportData(reportData, sortBy, sortOrder);
+        reportData = ReportSorter.SortReportData(reportData, sortBy, sortOrder);
 
         // CSV 데이터 파일 생성
         var csv = new StringBuilder();
@@ -128,7 +129,7 @@ CoconaApp.Run((
         if (format.ToLower() == "txt")
         {
             string txtPath = Path.Combine(output, "results.txt");
-            string txtContent = BuildTextReport(repo, reportData);
+            string txtContent = ReportFormatter.BuildTextReport(repo, reportData);
 
             File.WriteAllText(txtPath, txtContent, Encoding.UTF8);
             Console.Error.WriteLine($"가독성 리포트(TXT) 추가 저장 완료: {txtPath}");
@@ -139,131 +140,3 @@ CoconaApp.Run((
         Console.Error.WriteLine($"데이터 처리 중 오류 발생: {ex.Message}");
     }
 });
-
-static List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)>
-SortReportData(List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> data,
-                string sortBy, string sortOrder)
-{
-    var sorted = sortBy.ToLower() switch
-    {
-        "score" => sortOrder.ToLower() == "asc"
-            ? data.OrderBy(x => x.Score).ToList()
-            : data.OrderByDescending(x => x.Score).ToList(),
-        "id" => sortOrder.ToLower() == "asc"
-            ? data.OrderBy(x => x.Id).ToList()
-            : data.OrderByDescending(x => x.Id).ToList(),
-        _ => sortOrder.ToLower() == "asc"
-            ? data.OrderBy(x => x.Score).ToList()
-            : data.OrderByDescending(x => x.Score).ToList()
-    };
-
-    return sorted;
-}
-
-static string BuildTextReport(
-    string repo,
-    List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> reportData)
-{
-    var rows = reportData.Select(r => new
-    {
-        Id = r.Id,
-        IssuePr = $"{r.docIssues + r.featBugIssues}/{r.typoPrs + r.docPrs + r.featBugPrs}",
-        Score = r.Score.ToString()
-    }).ToList();
-
-    string userHeader = "유저";
-    string issuePrHeader = "이슈/PR";
-    string scoreHeader = "점수";
-
-    int userWidth = Math.Max(userHeader.Length, rows.Any() ? rows.Max(x => x.Id.Length) : 0);
-    int issuePrWidth = Math.Max(issuePrHeader.Length, rows.Any() ? rows.Max(x => x.IssuePr.Length) : 0);
-    int scoreWidth = Math.Max(scoreHeader.Length, rows.Any() ? rows.Max(x => x.Score.Length) : 0);
-
-    string separator =
-        new string('-', userWidth) + "-+-" +
-        new string('-', issuePrWidth) + "-+-" +
-        new string('-', scoreWidth);
-
-    var sb = new StringBuilder();
-    sb.AppendLine($"=== {repo} 오픈소스 기여도 분석 리포트 ===");
-    sb.AppendLine($"분석 일시: {DateTime.Now:yyyy-MM-dd HH:mm}");
-    sb.AppendLine();
-
-    sb.AppendLine(
-        PadRightKorean(userHeader, userWidth) + " | " +
-        PadLeft(issuePrHeader, issuePrWidth) + " | " +
-        PadLeft(scoreHeader, scoreWidth));
-
-    sb.AppendLine(separator);
-
-    foreach (var row in rows)
-    {
-        sb.AppendLine(
-            PadRightKorean(row.Id, userWidth) + " | " +
-            PadLeft(row.IssuePr, issuePrWidth) + " | " +
-            PadLeft(row.Score, scoreWidth));
-    }
-
-    return sb.ToString();
-}
-
-static string BuildClaimsReport(ClaimsData data, string mode)
-{
-    var sb = new StringBuilder();
-
-    if (data.ClaimedMap.Count == 0)
-    {
-        sb.AppendLine("최근 48시간 내 선점된 이슈가 없습니다.");
-        return sb.ToString();
-    }
-
-    sb.AppendLine("미선점 이슈");
-    foreach (var url in data.UnclaimedUrls)
-        sb.AppendLine($" - {url}");
-
-    sb.AppendLine("\n선점된 이슈");
-    foreach (var (login, claims) in data.ClaimedMap)
-    {
-        sb.AppendLine($"{login}");
-        foreach (var claim in claims)
-        {
-            sb.AppendLine($" - {claim.Url}");
-            if (claim.Labels.Count > 0)
-                sb.AppendLine($"    라벨: {string.Join(", ", claim.Labels)}");
-            sb.AppendLine(claim.HasPr ? "   PR 생성됨" : FormatRemainingTime(claim.Remaining));
-        }
-    }
-
-    return sb.ToString();
-}
-
-static string PadLeft(string text, int width)
-{
-    return text.PadLeft(width);
-}
-
-static string PadRightKorean(string text, int width)
-{
-    int textWidth = GetDisplayWidth(text);
-    if (textWidth >= width) return text;
-
-    return text + new string(' ', width - textWidth);
-}
-
-static int GetDisplayWidth(string text)
-{
-    int width = 0;
-
-    foreach (char c in text)
-    {
-        width += c > 127 ? 2 : 1;
-    }
-
-    return width;
-}
-
-static string FormatRemainingTime(TimeSpan remaining)
-{
-    if (remaining <= TimeSpan.Zero) return "    기한 초과";
-    return $"   남은 시간: {(int)remaining.TotalHours:D2}:{remaining.Minutes:D2}:{remaining.Seconds:D2}";
-}
