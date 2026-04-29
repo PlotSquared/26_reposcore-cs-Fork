@@ -15,7 +15,8 @@ CoconaApp.Run((
     [Option('o', Description = "출력 디렉토리 경로")] string output = "./results",
     [Option(Description = "정렬 기준 (score | id)")] string sortBy = "score",
     [Option(Description = "정렬 방법 (asc | desc)")] string sortOrder = "desc",
-    [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null
+    [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null,
+    [Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false
 ) =>
 {
     token ??= Environment.GetEnvironmentVariable("GITHUB_TOKEN");
@@ -57,7 +58,7 @@ CoconaApp.Run((
 
         if (!Directory.Exists(output)) Directory.CreateDirectory(output);
         string cachePath = Path.Combine(output, "cache.json");
-        var cache = CacheManager.LoadCache(cachePath, repo);
+        var cache = CacheManager.LoadCache(cachePath, repo, noCache);
 
         DateTimeOffset? since = cache.LastAnalyzedAt > DateTimeOffset.MinValue ? cache.LastAnalyzedAt : null;
 
