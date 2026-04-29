@@ -198,8 +198,8 @@ static string BuildTextReport(
 
     sb.AppendLine(
         PadRightKorean(userHeader, userWidth) + " | " +
-        PadLeft(issuePrHeader, issuePrWidth) + " | " +
-        PadLeft(scoreHeader, scoreWidth));
+        issuePrHeader.PadLeft(issuePrWidth) + " | " +
+        scoreHeader.PadLeft(scoreWidth));
 
     sb.AppendLine(separator);
 
@@ -207,8 +207,8 @@ static string BuildTextReport(
     {
         sb.AppendLine(
             PadRightKorean(row.Id, userWidth) + " | " +
-            PadLeft(row.IssuePr, issuePrWidth) + " | " +
-            PadLeft(row.Score, scoreWidth));
+            row.IssuePr.PadLeft(issuePrWidth) + " | " +
+            row.Score.PadLeft(scoreWidth));
     }
 
     return sb.ToString();
@@ -296,11 +296,6 @@ static string BuildClaimsReport(ClaimsData data, string mode)
     }
 
     return sb.ToString();
-}
-
-static string PadLeft(string text, int width)
-{
-    return text.PadLeft(width);
 }
 
 static string PadRightKorean(string text, int width)
