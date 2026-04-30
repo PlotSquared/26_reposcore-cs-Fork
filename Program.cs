@@ -109,13 +109,9 @@ var cache = CacheManager.LoadCache(cachePath, repo, noCache);
                     else cache.UserPullRequests[user].Add(npr);
                 }
 
-                var userClaimsToCalc = cache.UserClaims[user]
-                    .Where(c => c.ClosedReason != IssueClosedStateReason.NotPlanned && c.ClosedReason != IssueClosedStateReason.Duplicate)
-                    .ToList();
+                var userClaimsToCalc = cache.UserClaims[user];
 
-                var prsToCalc = cache.UserPullRequests[user]
-                    .Where(p => p.IsMerged)
-                    .ToList();
+                var prsToCalc = cache.UserPullRequests[user];
 
                 var featureBugPrs = prsToCalc.Where(p => p.Labels.Contains(GitHubIssuePrLabel.Bug) || p.Labels.Contains(GitHubIssuePrLabel.Enhancement)).ToList();
                 var docPrs = prsToCalc.Where(p => p.Labels.Contains(GitHubIssuePrLabel.Documentation)).ToList();
