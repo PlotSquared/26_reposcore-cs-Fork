@@ -70,10 +70,6 @@ var cache = CacheManager.LoadCache(cachePath, repo, noCache);
 
             Console.Error.WriteLine($"{repo} 기여자 데이터 수집 및 분석 중...");
 
-            if (!Directory.Exists(repoOutput)) Directory.CreateDirectory(repoOutput);
-            string cachePath = Path.Combine(repoOutput, "cache.json");
-            var cache = CacheManager.LoadCache(cachePath, repo);
-
             DateTimeOffset? since = cache.LastAnalyzedAt > DateTimeOffset.MinValue ? cache.LastAnalyzedAt : null;
 
             if (since.HasValue)
