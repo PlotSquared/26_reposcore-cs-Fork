@@ -7,6 +7,9 @@ using Cocona;
 using RepoScore.Data;
 using RepoScore.Services;
 using Spectre.Console; // 라이브러리 추가
+using System.Globalization;
+
+CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 
 CoconaApp.Run((
 [Argument(Description = "대상 저장소 목록 (예: owner/repo1 owner/repo2)")] string[] repos,
@@ -73,7 +76,7 @@ var cache = CacheManager.LoadCache(cachePath, repo, noCache);
             AnsiConsole.MarkupLine($"[yellow]{repo}[/] 기여자 데이터 수집 및 분석 중...");
 
             if (!Directory.Exists(repoOutput)) Directory.CreateDirectory(repoOutput);
-            
+
             if (!CacheManager.HasSameKeywords(cache, parsedKeywords))
             {
                 Console.Error.WriteLine("키워드 옵션이 이전 실행과 달라 캐시를 무효화합니다.");
