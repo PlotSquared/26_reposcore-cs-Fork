@@ -26,8 +26,14 @@ namespace RepoScore.Data
             Converters = { new JsonStringEnumConverter() }
         };
 
-        public static RepoCache LoadCache(string cacheFilePath, string repoName)
+        public static RepoCache LoadCache(string cacheFilePath, string repoName, bool noCache = false)
         {
+            if (noCache)
+            {
+                Console.Error.WriteLine("ℹ️  캐시를 무시하고 전체 데이터를 다시 수집합니다.");
+                return new RepoCache { Repository = repoName };
+            }
+
             if (!File.Exists(cacheFilePath))
             {
                 return new RepoCache { Repository = repoName };
@@ -46,7 +52,7 @@ namespace RepoScore.Data
             }
             catch
             {
-                Console.WriteLine("⚠️ 기존 캐시 파일이 손상되어 새로 수집을 시작합니다.");
+                Console.Error.WriteLine("⚠️ 기존 캐시 파일이 손상되어 새로 수집을 시작합니다.");
                 return new RepoCache { Repository = repoName };
             }
         }
@@ -57,7 +63,7 @@ namespace RepoScore.Data
             {
                 Directory.CreateDirectory(dir);
             }
-            
+
             cacheData.LastAnalyzedAt = DateTimeOffset.UtcNow;
 
             string json = JsonSerializer.Serialize(cacheData, s_jsonOptions);
