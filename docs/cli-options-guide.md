@@ -125,8 +125,7 @@ dotnet run -- oss2026hnu/reposcore-cs --claims=issue --token ghp_xxxxx
 dotnet run -- oss2026hnu/reposcore-cs --claims=user --token ghp_xxxxx
 ```
 
-> ⚠️ `--claims`는 `=` 없이 값을 공백으로 구분해서 입력하면 동작이 다를 수 있습니다.  
-> `--claims=issue` 또는 `--claims issue` 형식 모두 사용 가능합니다.
+> ⚠️  `--claims=issue` 또는 `--claims issue` 형식 모두 사용 가능합니다.
 
 ---
 
