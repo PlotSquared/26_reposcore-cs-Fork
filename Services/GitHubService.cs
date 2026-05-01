@@ -50,6 +50,8 @@ namespace RepoScore.Services
         public DateTimeOffset UpdatedAt { get; set; }
     }
 
+    // GitHub REST/GraphQL API를 통해 저장소 데이터를 조회하는 서비스 클래스.
+    // PR 조회, 이슈 조회, 기여자 목록 조회, 이슈 선점 현황 조회 기능을 담당.
     public class GitHubService
     {
         private readonly Octokit.GraphQL.Connection _graphQLConnection;
@@ -77,6 +79,8 @@ namespace RepoScore.Services
             };
         }
 
+        // 특정 사용자가 작성하고 머지된 PR 목록을 GraphQL로 조회.
+        // since가 지정된 경우 해당 시각 이후 업데이트된 PR만 가져옴.
         public List<PRRecord> GetPullRequests(string authorLogin, DateTimeOffset? since = null)
         {
             string searchString = $"repo:{_owner}/{_repo} is:pr is:merged author:{authorLogin}";
@@ -130,6 +134,9 @@ namespace RepoScore.Services
             return prRecords;
         }
 
+        // 특정 사용자가 작성한 이슈 목록을 GraphQL로 조회.
+        // "not planned", "duplicate" 사유로 닫힌 이슈는 제외.
+        // since가 지정된 경우 해당 시각 이후 업데이트된 이슈만 가져옴.
         public List<ClaimRecord> GetClaims(string authorLogin, DateTimeOffset? since = null)
         {
             const string rawGraphQl = @"
@@ -225,6 +232,8 @@ namespace RepoScore.Services
             return claimRecords;
         }
 
+        // 저장소의 열린 이슈를 대상으로 최근 48시간 내 선점 현황을 조회.
+        // 이슈별로 선점 댓글 작성자, 남은 기한, 연결된 PR 유무를 파악하여 반환.
         public ClaimsData GetRecentClaimsData()
         {
             var claimsData = new ClaimsData();
@@ -338,6 +347,8 @@ namespace RepoScore.Services
             return issueLabels.Contains(GitHubIssuePrLabel.Documentation) || issueLabels.Contains(GitHubIssuePrLabel.Typo);
         }
 
+        // GitHub 라벨 이름 문자열을 GitHubIssuePrLabel 열거형 값으로 변환.
+        // 대소문자 및 공백/하이픈을 정규화한 뒤 매핑. 알 수 없는 라벨은 None 반환.
         private static GitHubIssuePrLabel ParseGitHubLabel(string labelName)
         {
             if (string.IsNullOrEmpty(labelName)) return GitHubIssuePrLabel.None;
@@ -369,6 +380,7 @@ namespace RepoScore.Services
             });
         }
 
+        // GraphQL 응답의 이슈 노드에서 닫힌 사유(stateReason)를 파싱하여 열거형으로 반환.
         private static IssueClosedStateReason ParseIssueClosedStateReason(JsonElement issueNode)
         {
             if (!issueNode.TryGetProperty("stateReason", out var stateReasonElement) ||
@@ -387,6 +399,8 @@ namespace RepoScore.Services
             };
         }
 
+        // REST API를 통해 저장소의 전체 기여자 로그인 ID 목록을 조회.
+        // 조회 실패 시 빈 목록을 반환.
         public List<string> GetAllContributors()
         {
             try

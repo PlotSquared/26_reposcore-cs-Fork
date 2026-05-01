@@ -7,7 +7,7 @@ using RepoScore.Services;
 
 namespace RepoScore.Data
 {
-
+    // 저장소별 분석 캐시 데이터를 표현하는 클래스. JSON 파일로 직렬화되어 저장됨.
     public class RepoCache
     {
         public string Repository { get; set; } = string.Empty;
@@ -20,6 +20,8 @@ namespace RepoScore.Data
         public Dictionary<string, List<PRRecord>> UserPullRequests { get; set; } = new();
     }
 
+    // 캐시 파일의 로드 및 저장을 담당하는 클래스.
+    // 이전 분석 결과를 JSON 파일로 유지하여 불필요한 API 요청을 줄임.
     public static class CacheManager
     {
         private static readonly JsonSerializerOptions s_jsonOptions = new JsonSerializerOptions
@@ -28,6 +30,8 @@ namespace RepoScore.Data
             Converters = { new JsonStringEnumConverter() }
         };
 
+        // 기존 캐시 파일을 읽어 RepoCache 객체를 반환.
+        // 파일이 없거나 손상된 경우, 또는 noCache=true이면 빈 캐시를 반환.
         public static RepoCache LoadCache(string cacheFilePath, string repoName, bool noCache = false)
         {
             if (noCache)
@@ -58,6 +62,8 @@ namespace RepoScore.Data
                 return new RepoCache { Repository = repoName };
             }
         }
+
+        // 분석 결과 캐시를 JSON 파일로 저장. 저장 시각과 키워드를 함께 기록.
         public static void SaveCache(string cacheFilePath, RepoCache cacheData, string[]? keywords)
         {
             var dir = Path.GetDirectoryName(cacheFilePath);
@@ -72,6 +78,9 @@ namespace RepoScore.Data
             string json = JsonSerializer.Serialize(cacheData, s_jsonOptions);
             File.WriteAllText(cacheFilePath, json);
         }
+
+        // 캐시에 저장된 키워드와 현재 실행 키워드가 동일한지 비교.
+        // 키워드가 달라진 경우 캐시 무효화 여부 판단에 사용됨.
         public static bool HasSameKeywords(RepoCache cacheData, string[]? currentKeywords)
         {
             var cachedKeywords = cacheData.Keywords;

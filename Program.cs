@@ -178,6 +178,7 @@ var cache = CacheManager.LoadCache(cachePath, repo, noCache);
     }
 });
 
+// 분석 결과 목록을 지정된 기준(score | id)과 방향(asc | desc)으로 정렬하여 반환.
 static List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)>
 SortReportData(List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> data,
                 string sortBy, string sortOrder)
@@ -221,6 +222,7 @@ static void PrintSpectreTable(string repo, List<(string Id, int docIssues, int f
     AnsiConsole.Write(table);
 }
 
+// 분석 결과를 ANSI 코드 없는 순수 텍스트 테이블로 생성. 파일 저장용.
 static string BuildTextReport(
     string repo,
     List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> reportData)
@@ -250,6 +252,8 @@ static string BuildTextReport(
     return recorder.ExportText();
 }
 
+// 이슈 선점 현황을 mode에 따라 문자열 리포트로 생성.
+// mode="user"이면 유저별, 그 외("issue")이면 이슈 번호 오름차순으로 출력.
 static string BuildClaimsReport(ClaimsData data, string mode)
 {
     var sb = new StringBuilder();
@@ -309,6 +313,7 @@ static string BuildClaimsReport(ClaimsData data, string mode)
     return sb.ToString();
 }
 
+// 선점 기한까지 남은 시간을 HH:MM:SS 형식으로 반환. 기한 초과 시 "기한 초과" 반환.
 static string FormatRemainingTime(TimeSpan remaining)
 {
     if (remaining <= TimeSpan.Zero) return "   기한 초과";
