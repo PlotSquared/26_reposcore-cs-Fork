@@ -6,7 +6,7 @@ using System.Text;
 using Cocona;
 using RepoScore.Data;
 using RepoScore.Services;
-using Spectre.Console;
+using Spectre.Console; // 라이브러리 추가
 using System.Globalization;
 
 CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
@@ -18,7 +18,7 @@ CoconaApp.Run((
 [Option('f', Description = "출력 형식 (csv, txt)")] string? format = null,
 [Option('o', Description = "출력 디렉토리 경로")] string? output = null,
 [Option(Description = "정렬 기준 (score | id)")] string? sortBy = null,
-[Option(Description = "정렬 방법 (asc | desc)")] string? sortOrder = null,
+[Option(Description = "정렬 방법 (asc | desc)")] string? sortOrder= null,
 [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null,
 [Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false
 ) =>
@@ -43,12 +43,12 @@ CoconaApp.Run((
         string ownerName = parts[0];
         string repoName = parts[1];
 
-        string repoOutput = repos.Length > 1
-            ? Path.Combine(output, $"{ownerName}_{repoName}")
-            : output;
-        if (!Directory.Exists(repoOutput)) Directory.CreateDirectory(repoOutput);
-        string cachePath = Path.Combine(repoOutput, "cache.json");
-        var cache = CacheManager.LoadCache(cachePath, repo, noCache);
+string repoOutput = repos.Length > 1
+    ? Path.Combine(output, $"{ownerName}_{repoName}")
+    : output;
+if (!Directory.Exists(repoOutput)) Directory.CreateDirectory(repoOutput);
+string cachePath = Path.Combine(repoOutput, "cache.json");
+var cache = CacheManager.LoadCache(cachePath, repo, noCache);
 
         var service = new GitHubService(ownerName, repoName, token, parsedKeywords);
 
@@ -64,6 +64,7 @@ CoconaApp.Run((
                 Console.Write(report);
                 continue;
             }
+
 
             AnsiConsole.MarkupLine($"[yellow]{repo}[/] 기여자 데이터 수집 및 분석 중...");
 
@@ -121,6 +122,7 @@ CoconaApp.Run((
                 }
 
                 var userClaimsToCalc = cache.UserClaims[user];
+
                 var prsToCalc = cache.UserPullRequests[user];
 
                 var featureBugPrs = prsToCalc.Where(p => p.Labels.Contains(GitHubIssuePrLabel.Bug) || p.Labels.Contains(GitHubIssuePrLabel.Enhancement)).ToList();
@@ -158,6 +160,7 @@ CoconaApp.Run((
                 File.WriteAllText(txtPath, txtContent, Encoding.UTF8);
                 Console.Error.WriteLine($"가독성 리포트(TXT) 추가 저장 완료: {txtPath}");
 
+                // 화면에도 Spectre.Console을 사용하여 예쁘게 출력
                 PrintSpectreTable(repo, reportData);
             }
         }
@@ -188,6 +191,7 @@ SortReportData(List<(string Id, int docIssues, int featBugIssues, int typoPrs, i
     return sorted;
 }
 
+// Spectre.Console을 사용하여 터미널에 직접 출력하는 함수
 static void PrintSpectreTable(string repo, List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> reportData)
 {
     var table = new Table();
@@ -259,10 +263,10 @@ static string BuildClaimsReport(ClaimsData data, string mode)
         if (data.ClaimedMap.Count > 0)
         {
             sb.AppendLine("\n[green]선점된 이슈[/]");
-            foreach (var (login, claimList) in data.ClaimedMap)
+            foreach (var (login, claims) in data.ClaimedMap)
             {
                 sb.AppendLine($"[bold]{login}[/]");
-                foreach (var claim in claimList)
+                foreach (var claim in claims)
                 {
                     sb.AppendLine($" - {claim.Url}");
                     if (claim.Labels.Count > 0) sb.AppendLine($"   라벨: {string.Join(", ", claim.Labels)}");
