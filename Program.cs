@@ -156,16 +156,13 @@ CoconaApp.Run((
             File.WriteAllText(csvPath, csv.ToString(), Encoding.UTF8);
             Console.Error.WriteLine($"기본 데이터(CSV) 저장 완료: {csvPath}");
 
-            // TXT 리포트 생성 및 화면 출력
+            // TXT 리포트 생성
             if (format.ToLower() == "txt")
             {
                 string txtPath = Path.Combine(repoOutput, "results.txt");
                 string txtContent = ReportFormatter.BuildTextReport(repo, reportData);
-
                 File.WriteAllText(txtPath, txtContent, Encoding.UTF8);
                 Console.Error.WriteLine($"가독성 리포트(TXT) 추가 저장 완료: {txtPath}");
-
-                PrintSpectreTable(repo, reportData);
             }
         }
         catch (Exception ex)
@@ -174,26 +171,3 @@ CoconaApp.Run((
         }
     }
 });
-
-// Spectre.Console을 사용하여 터미널에 직접 출력하는 함수
-static void PrintSpectreTable(string repo, List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)> reportData)
-{
-    var table = new Table();
-    table.Title($"[bold blue]=== {repo} 기여도 리포트 ===[/]");
-    table.Border(TableBorder.Rounded);
-
-    table.AddColumn(new TableColumn("[yellow]유저[/]").Centered());
-    table.AddColumn(new TableColumn("[yellow]이슈/PR[/]").Centered());
-    table.AddColumn(new TableColumn("[yellow]점수[/]").Centered());
-
-    foreach (var r in reportData)
-    {
-        table.AddRow(
-            r.Id,
-            $"{r.docIssues + r.featBugIssues}/{r.typoPrs + r.docPrs + r.featBugPrs}",
-            $"[green]{r.Score}[/]"
-        );
-    }
-
-    AnsiConsole.Write(table);
-}
