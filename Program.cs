@@ -190,7 +190,7 @@ CoconaApp.Run((
     }
 
     // 저장소가 2개 이상이고 claims 모드가 아닐 때만 전체 합산 리포트 생성
-    if (repos.Length > 1 && claims == null && totalUserIssues.Count > 0)
+    if (repos.Length > 1 && claims == null && (totalUserIssues.Count > 0 || totalUserPullRequests.Count > 0))
     {
         try
         {
