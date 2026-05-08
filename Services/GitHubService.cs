@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Octokit.GraphQL;
 using Octokit.GraphQL.Model;
 
@@ -47,6 +48,12 @@ namespace RepoScore.Services
         public bool IsMerged { get; set; } = false;
         public List<GitHubIssuePrLabel> Labels { get; set; } = new();
         public DateTimeOffset UpdatedAt { get; set; }
+    }
+
+    public class PRWithLinkedIssues
+    {
+        public PRRecord Pr { get; set; } = new();
+        public List<int> LinkedIssueNumbers { get; set; } = new();
     }
 
     // GitHub REST/GraphQL API를 통해 저장소 데이터를 조회하는 서비스 클래스.
@@ -236,6 +243,8 @@ namespace RepoScore.Services
             bool hasNextPage = true;
             var now = DateTimeOffset.UtcNow;
 
+            List<PRWithLinkedIssues> openPrs = GetOpenPullRequestsWithLinkedIssues();
+
             while (hasNextPage)
             {
                 var query = new Octokit.GraphQL.Query()
@@ -277,7 +286,7 @@ namespace RepoScore.Services
                         {
                             var deadlineHours = IsDocumentTask(issueLabels) ? 24.0 : 48.0;
                             var remaining = comment.CreatedAt.AddHours(deadlineHours) - now;
-                            var hasPr = issue.Number > 0 && HasLinkedPullRequest(issue.Number);
+                            var hasPr = issue.Number > 0 && openPrs.Any(pr => pr.LinkedIssueNumbers.Contains(issue.Number));
 
                             if (!claimsData.ClaimedMap.ContainsKey(login))
                                 claimsData.ClaimedMap[login] = new List<IssueRecord>();
@@ -305,26 +314,73 @@ namespace RepoScore.Services
             return claimsData;
         }
 
-        private bool HasLinkedPullRequest(int issueNumber)
+        public List<PRWithLinkedIssues> GetOpenPullRequestsWithLinkedIssues()
         {
-            try
+            var prsWithIssues = new List<PRWithLinkedIssues>();
+            string? cursor = null;
+            bool hasNextPage = true;
+
+            // 이슈 번호 파싱을 위한 정규식 (예: #312, URL 해시 제외)
+            var regex = new Regex(@"(?<!\w)#(\d+)\b");
+
+            while (hasNextPage)
             {
                 var query = new Octokit.GraphQL.Query()
                     .Repository(_repo, _owner)
-                    .Issue(issueNumber)
-                    .TimelineItems(first: 50)
-                    .Nodes
-                    .OfType<CrossReferencedEvent>()
-                    .Select(e => e.Url);
+                    .PullRequests(first: 100, states: new[] { PullRequestState.Open }, after: cursor)
+                    .Select(s => new
+                    {
+                        s.PageInfo.HasNextPage,
+                        s.PageInfo.EndCursor,
+                        Items = s.Nodes.Select(pr => new
+                        {
+                            pr.Number,
+                            pr.Title,
+                            pr.Url,
+                            pr.Body,
+                            pr.UpdatedAt,
+                            Labels = pr.Labels(10, null, null, null, null).Nodes.Select(l => l.Name).ToList()
+                        }).ToList()
+                    });
 
-                var timelineUrls = _graphQLConnection.Run(query).Result;
+                var result = _graphQLConnection.Run(query).Result;
 
-                return timelineUrls.Any(url => !string.IsNullOrEmpty(url) && url.Contains("/pull/"));
+                foreach (var pr in result.Items)
+                {
+                    var linkedIssueNumbers = new HashSet<int>();
+
+                    if (!string.IsNullOrWhiteSpace(pr.Body))
+                    {
+                        var matches = regex.Matches(pr.Body);
+                        foreach (Match match in matches)
+                        {
+                            if (match.Groups.Count > 1 && int.TryParse(match.Groups[1].Value, out int issueNum))
+                            {
+                                linkedIssueNumbers.Add(issueNum);
+                            }
+                        }
+                    }
+
+                    prsWithIssues.Add(new PRWithLinkedIssues
+                    {
+                        Pr = new PRRecord
+                        {
+                            Number = pr.Number,
+                            Title = pr.Title,
+                            Url = pr.Url,
+                            IsMerged = false, // Open 상태인 PR들만 필터링했으므로 false
+                            UpdatedAt = pr.UpdatedAt,
+                            Labels = pr.Labels.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList()
+                        },
+                        LinkedIssueNumbers = linkedIssueNumbers.ToList()
+                    });
+                }
+
+                hasNextPage = result.HasNextPage;
+                cursor = result.EndCursor;
             }
-            catch
-            {
-                return false;
-            }
+
+            return prsWithIssues;
         }
 
         internal static bool IsDocumentTask(List<GitHubIssuePrLabel> issueLabels)
