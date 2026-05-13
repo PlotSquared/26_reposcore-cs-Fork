@@ -63,9 +63,31 @@ namespace RepoScore.Data
                 int totalIssues = r.featBugIssues + r.docIssues;
                 int rejectedIssue = Math.Max(0, totalIssues - maxIssueCount);
 
-                sb.AppendLine($"   [미인정 항목] 문서/오타 PR {rejectedPr}개 초과(한도 {maxAdditionalPr}개) / 이슈 {rejectedIssue}개 초과(한도 {maxIssueCount}개)");
-                sb.AppendLine($"   [추가 제안] 기능/버그 PR 1개 추가 시 이슈 인정 한도 +4, 문서PR 인정 한도 +3");
-                sb.AppendLine();
+                if (rejectedPr > 0 || rejectedIssue > 0)
+                {
+                    sb.AppendLine($"   [미인정 항목] 문서/오타 PR {rejectedPr}개 초과(한도 {maxAdditionalPr}개) / 이슈 {rejectedIssue}개 초과(한도 {maxIssueCount}개)");
+
+                    if (rejectedPr > 0)
+                    {
+                        int docSuggestionCount = (rejectedPr + 2) / 3;
+                        sb.AppendLine($"   [추가 제안] 기능/버그 PR {docSuggestionCount}개 추가 시 문서PR 인정 한도 +{docSuggestionCount * 3}");
+                    }
+
+                    if (rejectedIssue > 0)
+                    {
+                        int issueSuggestionCount = (rejectedIssue + 3) / 4;
+                        if (totalDocTypoPr < maxAdditionalPr)
+                        {
+                            sb.AppendLine($"   [추가 제안] 문서 PR {issueSuggestionCount}개 추가 혹은 기능/버그 PR {issueSuggestionCount}개 추가시 이슈 인정한도 +{issueSuggestionCount * 4}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"   [추가 제안] 기능/버그 PR {issueSuggestionCount}개 추가시 이슈 인정한도 +{issueSuggestionCount * 4}");
+                        }
+                    }
+
+                    sb.AppendLine();
+                }
             }
 
             return sb.ToString();
