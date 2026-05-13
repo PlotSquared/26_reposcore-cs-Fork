@@ -27,6 +27,7 @@ namespace RepoScore.Services
         public int Number { get; set; }
         public string Url { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public string AuthorLogin { get; set; } = string.Empty;
         public bool HasPr { get; set; }
         public List<PRRecord> LinkedPullRequests { get; set; } = new();
         public IssueClosedStateReason ClosedReason { get; set; } = IssueClosedStateReason.None;
@@ -46,6 +47,7 @@ namespace RepoScore.Services
         public int Number { get; set; }
         public string Url { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public string AuthorLogin { get; set; } = string.Empty;
         public bool IsMerged { get; set; } = false;
         public List<GitHubIssuePrLabel> Labels { get; set; } = new();
         public DateTimeOffset UpdatedAt { get; set; }
@@ -80,11 +82,11 @@ namespace RepoScore.Services
                 new Octokit.GraphQL.ProductHeaderValue("reposcore-cs"), token);
         }
 
-        // 특정 사용자가 작성하고 머지된 PR 목록을 GraphQL로 조회.
+        // 저장소의 머지된 전체 PR 목록을 GraphQL로 조회.
         // since가 지정된 경우 해당 시각 이후 업데이트된 PR만 가져옴.
-        public List<PRRecord> GetPullRequests(string authorLogin, DateTimeOffset? since = null)
+        public List<PRRecord> GetPullRequests(DateTimeOffset? since = null)
         {
-            string searchString = $"repo:{_owner}/{_repo} is:pr is:merged author:{authorLogin}";
+            string searchString = $"repo:{_owner}/{_repo} is:pr is:merged";
             if (since.HasValue)
             {
                 searchString += $" updated:>={since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
@@ -109,6 +111,7 @@ namespace RepoScore.Services
                             pr.Url,
                             pr.Merged,
                             pr.UpdatedAt,
+                            AuthorLogin = pr.Author.Login,
                             Labels = pr.Labels(10, null, null, null, null).Nodes.Select(l => l.Name).ToList()
                         }).ToList()
                     });
@@ -122,6 +125,7 @@ namespace RepoScore.Services
                         Number = pr.Number,
                         Title = pr.Title,
                         Url = pr.Url,
+                        AuthorLogin = pr.AuthorLogin ?? "",
                         IsMerged = pr.Merged,
                         UpdatedAt = pr.UpdatedAt,
                         Labels = pr.Labels.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList()
@@ -135,10 +139,10 @@ namespace RepoScore.Services
             return prRecords;
         }
 
-        // 특정 사용자가 작성한 이슈 목록을 GraphQL로 조회.
+        // 저장소의 전체 이슈 목록을 GraphQL로 조회.
         // "not planned", "duplicate" 사유로 닫힌 이슈는 제외.
         // since가 지정된 경우 해당 시각 이후 업데이트된 이슈만 가져옴.
-        public List<IssueRecord> GetIssues(string authorLogin, DateTimeOffset? since = null)
+        public List<IssueRecord> GetIssues(DateTimeOffset? since = null)
         {
             const string rawGraphQl = @"
             query($searchQuery: String!, $after: String) {
@@ -154,6 +158,9 @@ namespace RepoScore.Services
                             url
                             stateReason
                             updatedAt
+                            author {
+                                login
+                            }
                             labels(first: 10) {
                                 nodes {
                                     name
@@ -164,7 +171,7 @@ namespace RepoScore.Services
                 }
             }";
 
-            string searchString = $"repo:{_owner}/{_repo} is:issue author:{authorLogin} -reason:\"not planned\" -reason:\"duplicate\"";
+            string searchString = $"repo:{_owner}/{_repo} is:issue -reason:\"not planned\" -reason:\"duplicate\"";
             if (since.HasValue)
             {
                 searchString += $" updated:>={since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
@@ -219,11 +226,21 @@ namespace RepoScore.Services
                         var updatedAt = node.TryGetProperty("updatedAt", out var updatedElement)
                             ? DateTimeOffset.Parse(updatedElement.GetString()!) : DateTimeOffset.MinValue;
 
+                        string authorLogin = "";
+                        if (node.TryGetProperty("author", out var authorElement) && authorElement.ValueKind == JsonValueKind.Object)
+                        {
+                            if (authorElement.TryGetProperty("login", out var loginElement))
+                            {
+                                authorLogin = loginElement.GetString() ?? "";
+                            }
+                        }
+
                         issueRecords.Add(new IssueRecord
                         {
                             Number = node.TryGetProperty("number", out var numEl) ? numEl.GetInt32() : 0,
                             Title = node.TryGetProperty("title", out var titEl) ? titEl.GetString() ?? "" : "",
                             Url = node.TryGetProperty("url", out var urlEl) ? urlEl.GetString() ?? "" : "",
+                            AuthorLogin = authorLogin,
                             ClosedReason = ParseIssueClosedStateReason(node),
                             Labels = labelNames.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList(),
                             UpdatedAt = updatedAt
@@ -345,6 +362,7 @@ namespace RepoScore.Services
                             pr.Url,
                             pr.Body,
                             pr.UpdatedAt,
+                            AuthorLogin = pr.Author.Login,
                             Labels = pr.Labels(10, null, null, null, null).Nodes.Select(l => l.Name).ToList()
                         }).ToList()
                     });
@@ -374,6 +392,7 @@ namespace RepoScore.Services
                             Number = pr.Number,
                             Title = pr.Title,
                             Url = pr.Url,
+                            AuthorLogin = pr.AuthorLogin ?? "",
                             IsMerged = false, // Open 상태인 PR들만 필터링했으므로 false
                             UpdatedAt = pr.UpdatedAt,
                             Labels = pr.Labels.Select(ParseGitHubLabel).Where(l => l != GitHubIssuePrLabel.None).ToList()
