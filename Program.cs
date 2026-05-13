@@ -99,12 +99,20 @@ CoconaApp.Run((
                 Console.Error.WriteLine("기존 캐시 없음: 전체 데이터를 수집합니다.");
             }
 
-            List<string> contributors = service.GetAllContributors();
-            if (contributors.Count == 0) { Console.Error.WriteLine("조회된 기여자가 없습니다."); continue; }
-
             // 모든 PR 데이터를 한 번에 가져와서 루프 내에서 필터링 (N+1 최적화)
             var allNewPrs = service.GetPullRequests(since);
             var allNewIssues = service.GetIssues(since);
+
+            // 새로 조회된 PR과 이슈의 작성자, 기존 캐시의 작성자 목록을 통합하여 유니크한 기여자 목록 생성
+            List<string> contributors = allNewPrs.Select(p => p.AuthorLogin)
+                .Concat(allNewIssues.Select(i => i.AuthorLogin))
+                .Concat(cache.UserIssues.Keys)
+                .Concat(cache.UserPullRequests.Keys)
+                .Where(login => !string.IsNullOrEmpty(login))
+                .Distinct()
+                .ToList();
+
+            if (contributors.Count == 0) { Console.Error.WriteLine("조회된 기여자가 없습니다."); continue; }
 
             var reportData = new List<(string Id, int docIssues, int featBugIssues, int typoPrs, int docPrs, int featBugPrs, int Score)>();
 
