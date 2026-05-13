@@ -455,54 +455,5 @@ namespace RepoScore.Services
                 _ => IssueClosedStateReason.None
             };
         }
-
-        // GraphQL API를 통해 저장소의 전체 기여자 로그인 ID 목록을 조회.
-        // 조회 실패 시 빈 목록을 반환.
-        public List<string> GetAllContributors()
-        {
-            try
-            {
-                var contributors = new List<string>();
-                string? cursor = null;
-                bool hasNextPage = true;
-
-                while (hasNextPage)
-                {
-                    var query = new Octokit.GraphQL.Query()
-                        .Repository(_repo, _owner)
-                        .DefaultBranchRef
-                        .Target
-                        .Cast<Octokit.GraphQL.Model.Commit>()
-                        .History(first: 100, after: cursor)
-                        .Select(h => new
-                        {
-                            h.PageInfo.HasNextPage,
-                            h.PageInfo.EndCursor,
-                            Items = h.Nodes.Select(c => new
-                            {
-                                AuthorLogin = c.Author.User.Login
-                            }).ToList()
-                        });
-
-                    var result = _graphQLConnection.Run(query).Result;
-
-                    contributors.AddRange(
-                        result.Items
-                            .Where(c => !string.IsNullOrEmpty(c.AuthorLogin))
-                            .Select(c => c.AuthorLogin)
-                    );
-
-                    hasNextPage = result.HasNextPage;
-                    cursor = result.EndCursor;
-                }
-
-                return contributors.Distinct().ToList();
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"기여자 목록 조회 실패: {ex.Message}");
-                return new List<string>();
-            }
-        }
     }
 }
