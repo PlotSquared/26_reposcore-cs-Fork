@@ -29,9 +29,9 @@ dotnet run -- oss2026hnu/reposcore-cs --token YOUR_GITHUB_TOKEN
 dotnet run -- oss2026hnu/reposcore-cs oss2026hnu/reposcore-ts --token YOUR_GITHUB_TOKEN
 
 # 최근 이슈 선점 현황 조회 예시 (Codespaces 환경에서는 토큰 생략 가능)
-dotnet run -- oss2026hnu/reposcore-cs --claims= --token YOUR_GITHUB_TOKEN      # 이슈별 (기본값)
-dotnet run -- oss2026hnu/reposcore-cs --claims=issue --token YOUR_GITHUB_TOKEN # 이슈별 (명시)
-dotnet run -- oss2026hnu/reposcore-cs --claims=user --token YOUR_GITHUB_TOKEN  # 유저별
+dotnet run -- oss2026hnu/reposcore-cs --claims --token YOUR_GITHUB_TOKEN      # 이슈별 (기본값)
+dotnet run -- oss2026hnu/reposcore-cs --claims issue --token YOUR_GITHUB_TOKEN # 이슈별 (명시)
+dotnet run -- oss2026hnu/reposcore-cs --claims user --token YOUR_GITHUB_TOKEN  # 유저별
 
 # 도움말 출력 (모든 인수 및 옵션 확인)
 dotnet run -- --help
@@ -52,7 +52,7 @@ Arguments:
 Options:
   -t, --token <String>           GitHub Token (미입력시 GITHUB_TOKEN 사용)
   --claims <ClaimsMode>          최근 이슈 선점 현황 조회 (Allowed values: Issue, User)
-  -f, --format <OutputFormat>    출력 형식 (Default: Csv) (Allowed values: Csv, Txt)
+  -f, --format <OutputFormat>    출력 형식 (Default: Csv) (Allowed values: Csv, Txt, Html)
   -o, --output <String>          출력 디렉토리 경로 (Default: ./results)
   --sort-by <SortBy>             정렬 기준 (Default: Score) (Allowed values: Score, Id)
   --sort-order <SortOrder>       정렬 방법 (Default: Desc) (Allowed values: Asc, Desc)
@@ -63,8 +63,6 @@ Options:
 ```
 
 <!-- synopsis:end -->
-
-> 현재 개발 진행 중으로 상세 분석 기능은 순차적으로 업데이트될 예정입니다.
 
 ## Synopsis 업데이트
 
