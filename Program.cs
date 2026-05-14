@@ -14,24 +14,17 @@ CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 CoconaApp.Run((
 [Argument(Description = "대상 저장소 목록 (예: owner/repo1 owner/repo2)")] string[] repos,
 [Option('t', Description = "GitHub Token (미입력시 GITHUB_TOKEN 사용)")] string? token = null,
-[Option(Description = "최근 이슈 선점 현황 조회 (issue|user)")] string? claims = null,
-[Option('f', Description = "출력 형식 (csv, txt)")] string format = "csv",
+[Option(Description = "최근 이슈 선점 현황 조회")] ClaimsMode? claims = null,
+[Option('f', Description = "출력 형식")] OutputFormat format = OutputFormat.Csv,
 [Option('o', Description = "출력 디렉토리 경로")] string output = "./results",
-[Option(Description = "정렬 기준 (score | id)")] string sortBy = "score",
-[Option(Description = "정렬 방법 (asc | desc)")] string sortOrder = "desc",
+[Option(Description = "정렬 기준")] SortBy sortBy = SortBy.Score,
+[Option(Description = "정렬 방법")] SortOrder sortOrder = SortOrder.Desc,
 [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null,
 [Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false
 ) =>
 {
     token ??= Environment.GetEnvironmentVariable("GITHUB_TOKEN");
     if (string.IsNullOrEmpty(token)) { Console.Error.WriteLine("오류: GitHub 토큰이 필요합니다."); return; }
-
-    var allowedFormats = new[] { "csv", "txt" };
-    if (!allowedFormats.Contains(format.ToLowerInvariant()))
-    {
-        Console.Error.WriteLine($"오류: 지원하지 않는 형식입니다. csv 또는 txt를 입력해 주세요. (입력값: {format})");
-        return;
-    }
 
     string[]? parsedKeywords = keywords != null
         ? keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -63,10 +56,9 @@ CoconaApp.Run((
             if (claims != null)
             {
                 AnsiConsole.MarkupLine($"[[[blue]{ownerName}/{repoName}[/]]] 최근 이슈 선점 현황을 조회합니다...\n");
-                var mode = string.IsNullOrEmpty(claims) ? "issue" : claims;
 
                 var claimsData = service.GetRecentClaimsData();
-                var report = ReportFormatter.BuildClaimsReport(claimsData, mode);
+                var report = ReportFormatter.BuildClaimsReport(claimsData, claims.Value);
                 Console.Write(report);
                 continue;
             }
@@ -194,7 +186,7 @@ CoconaApp.Run((
             Console.Error.WriteLine($"기본 데이터(CSV) 저장 완료: {csvPath}");
 
             // TXT 리포트 생성
-            if (format.ToLower() == "txt")
+            if (format == OutputFormat.Txt)
             {
                 string txtPath = Path.Combine(repoOutput, "results.txt");
                 string txtContent = ReportFormatter.BuildTextReport(repo, reportData);
@@ -250,7 +242,7 @@ CoconaApp.Run((
             Console.Error.WriteLine($"전체 합산 데이터(CSV) 저장 완료: {totalCsvPath}");
 
             // 합산 TXT
-            if (format.ToLower() == "txt")
+            if (format == OutputFormat.Txt)
             {
                 string totalLabel = string.Join(" + ", repos);
                 string totalTxtPath = Path.Combine(totalOutput, "results.txt");
