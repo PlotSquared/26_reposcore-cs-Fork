@@ -20,22 +20,26 @@ namespace RepoScore.Data
             var rows = reportData.Select(r => new
             {
                 Id = r.Id,
-                IssuePr = $"{r.docIssues + r.featBugIssues}/{r.typoPrs + r.docPrs + r.featBugPrs}",
+                Issues = $"{r.docIssues + r.featBugIssues} ({r.docIssues}/{r.featBugIssues})",
+                PullRequests = $"{r.docPrs + r.featBugPrs + r.typoPrs} ({r.docPrs}/{r.featBugPrs}/{r.typoPrs})",
                 Score = r.Score.ToString(),
                 Raw = r
             }).ToList();
-
+            
             string userHeader = "유저";
-            string issuePrHeader = "이슈/PR";
+            string issueHeader = "이슈 (문서/기능버그)";
+            string prHeader = "PR (문서/기능버그/오타)";
             string scoreHeader = "점수";
 
-            int userWidth = Math.Max(userHeader.Length, rows.Any() ? rows.Max(x => GetDisplayWidth(x.Id)) : 0);
-            int issuePrWidth = Math.Max(issuePrHeader.Length, rows.Any() ? rows.Max(x => x.IssuePr.Length) : 0);
-            int scoreWidth = Math.Max(scoreHeader.Length, rows.Any() ? rows.Max(x => x.Score.Length) : 0);
+            int userWidth = Math.Max(GetDisplayWidth(userHeader), rows.Any() ? rows.Max(x => GetDisplayWidth(x.Id)) : 0);
+            int issueWidth = Math.Max(GetDisplayWidth(issueHeader), rows.Any() ? rows.Max(x => GetDisplayWidth(x.Issues)) : 0);
+            int prWidth = Math.Max(GetDisplayWidth(prHeader), rows.Any() ? rows.Max(x => GetDisplayWidth(x.PullRequests)) : 0);
+            int scoreWidth = Math.Max(GetDisplayWidth(scoreHeader), rows.Any() ? rows.Max(x => GetDisplayWidth(x.Score)) : 0);
 
             string separator =
                 new string('-', userWidth) + "-+-" +
-                new string('-', issuePrWidth) + "-+-" +
+                new string('-', issueWidth) + "-+-" +
+                new string('-', prWidth) + "-+-" +
                 new string('-', scoreWidth);
 
             var sb = new StringBuilder();
@@ -45,8 +49,9 @@ namespace RepoScore.Data
 
             sb.AppendLine(
                 PadRightKorean(userHeader, userWidth) + " | " +
-                PadLeft(issuePrHeader, issuePrWidth) + " | " +
-                PadLeft(scoreHeader, scoreWidth));
+                PadLeftKorean(issueHeader, issueWidth) + " | " +
+                PadLeftKorean(prHeader, prWidth) + " | " +
+                PadLeftKorean(scoreHeader, scoreWidth));
 
             sb.AppendLine(separator);
 
@@ -54,8 +59,9 @@ namespace RepoScore.Data
             {
                 sb.AppendLine(
                     PadRightKorean(row.Id, userWidth) + " | " +
-                    PadLeft(row.IssuePr, issuePrWidth) + " | " +
-                    PadLeft(row.Score, scoreWidth));
+                    PadLeftKorean(row.Issues, issueWidth) + " | " +
+                    PadLeftKorean(row.PullRequests, prWidth) + " | " +
+                    PadLeftKorean(row.Score, scoreWidth));
 
                 var r = row.Raw;
 
@@ -251,6 +257,14 @@ namespace RepoScore.Data
             if (textWidth >= width) return text;
 
             return text + new string(' ', width - textWidth);
+        }
+
+        public static string PadLeftKorean(string text, int width)
+        {
+            int textWidth = GetDisplayWidth(text);
+            if (textWidth >= width) return text;
+
+            return new string(' ', width - textWidth) + text;
         }
 
         public static int GetDisplayWidth(string text)
