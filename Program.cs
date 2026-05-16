@@ -16,7 +16,22 @@ CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 // 여기서는 repos 형식('owner/repo') 검증만 담당한다.
 // 검증 실패 시: 오류 메시지 일괄 출력 → help 출력(Cocona 내부 렌더러 재사용) → exit code 1.
 var formatErrors = new List<string>();
-var repoArgs = args.Where(a => !a.StartsWith("-")).ToList();
+// Cocona의 파라미터 파싱 규칙에 따라 positional argument(repos)는
+// 옵션 플래그(--)나 옵션값과 구분해야 한다.
+// "-"로 시작하지 않고, 바로 앞 인자가 값을 받는 옵션이 아닌 경우만 repo 후보로 간주한다.
+// 가장 안전한 방법: "--" 이후 또는 알려진 옵션 플래그 목록 외의 인자만 추출.
+var knownValueOptions = new HashSet<string> { "-t", "--token", "--claims", "-f", "--format", "-o", "--output", "--sort-by", "--sort-order", "--keywords" };
+var repoArgs = new List<string>();
+for (int i = 0; i < args.Length; i++)
+{
+    if (knownValueOptions.Contains(args[i]))
+    {
+        i++; // 다음 인자는 옵션 값이므로 건너뜀
+        continue;
+    }
+    if (args[i].StartsWith("-")) continue; // 플래그 옵션 건너뜀
+    repoArgs.Add(args[i]);
+}
 
 foreach (var repo in repoArgs)
 {
