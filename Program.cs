@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Cocona;
+using Cocona.Help;
 using RepoScore.Data;
 using RepoScore.Services;
 using Spectre.Console;
@@ -20,11 +21,45 @@ CoconaApp.Run((
 [Option(Description = "정렬 기준")] SortBy sortBy = SortBy.Score,
 [Option(Description = "정렬 방법")] SortOrder sortOrder = SortOrder.Desc,
 [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null,
-[Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false
+[Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false,
+[FromService] ICoconaHelpMessageBuilder helpMessageBuilder
 ) =>
 {
+    // ── 입력값 검증 ────────────────────────────────────────────────────────────
+    // repos 각 항목이 "owner/repo" 형식인지 검사. 형식 오류가 있으면 모두 수집 후 일괄 출력.
+    // (repos가 비어있는 경우는 Cocona가 람다 진입 전에 처리하므로 여기서는 형식만 검사)
+    var formatErrors = new List<string>();
+
+    foreach (var repo in repos)
+    {
+        var parts = repo.Split('/');
+        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
+        {
+            formatErrors.Add($"오류: '{repo}'는 'owner/repo' 형식이 아닙니다.");
+        }
+    }
+
+    if (formatErrors.Count > 0)
+    {
+        // 오류 메시지 일괄 출력
+        foreach (var error in formatErrors)
+        {
+            Console.Error.WriteLine(error);
+        }
+
+        // Cocona의 ICoconaHelpMessageBuilder를 통해 help 텍스트를 생성하여 단일 지점에서 출력.
+        // Cocona는 --help 처리 시 ICoconaHelpMessageBuilder.BuildAndRenderHelp()를 내부적으로 사용하며,
+        // 이를 직접 주입받아 재사용함으로써 코드 중복 없이 일관된 help 출력을 보장한다.
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(helpMessageBuilder.BuildAndRenderHelp());
+
+        Environment.Exit(1);
+        return;
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
     token ??= Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-    if (string.IsNullOrEmpty(token)) { Console.Error.WriteLine("오류: GitHub 토큰이 필요합니다."); return; }
+    if (string.IsNullOrEmpty(token)) { Console.Error.WriteLine("오류: GitHub 토큰이 필요합니다."); Environment.Exit(1); return; }
 
     string[]? parsedKeywords = keywords != null
         ? keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -36,9 +71,8 @@ CoconaApp.Run((
 
     foreach (var repo in repos)
     {
+        // 형식 검증을 위에서 통과했으므로 여기서는 안전하게 Split 가능
         var parts = repo.Split('/');
-        if (parts.Length != 2) { Console.Error.WriteLine($"오류: '{repo}'는 'owner/repo' 형식이 아닙니다. 건너뜁니다."); continue; }
-
         string ownerName = parts[0];
         string repoName = parts[1];
 
@@ -282,7 +316,7 @@ CoconaApp.Run((
         foreach (var repo in repos)
         {
             var parts = repo.Split('/');
-            if (parts.Length != 2) continue; // 포맷 오류는 위쪽 점수 계산 루프에서 이미 경고됨
+            if (parts.Length != 2) continue;
 
             string ownerName = parts[0];
             string repoName = parts[1];
