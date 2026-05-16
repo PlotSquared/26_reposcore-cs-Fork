@@ -13,6 +13,8 @@ using System.Globalization;
 CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
 
 CoconaApp.Run((
+[FromService] ICoconaHelpMessageBuilder helpMessageBuilder,
+[FromService] ICoconaHelpRenderer helpRenderer,
 [Argument(Description = "대상 저장소 목록 (예: owner/repo1 owner/repo2)")] string[] repos,
 [Option('t', Description = "GitHub Token (미입력시 GITHUB_TOKEN 사용)")] string? token = null,
 [Option(Description = "최근 이슈 선점 현황 조회")] ClaimsMode? claims = null,
@@ -21,8 +23,7 @@ CoconaApp.Run((
 [Option(Description = "정렬 기준")] SortBy sortBy = SortBy.Score,
 [Option(Description = "정렬 방법")] SortOrder sortOrder = SortOrder.Desc,
 [Option(Description = "이슈 선점 키워드 (쉼표 구분, 미입력시 기본값 사용)")] string? keywords = null,
-[Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false,
-[FromService] ICoconaHelpMessageBuilder helpMessageBuilder
+[Option(Description = "캐시를 무시하고 전체 데이터를 다시 수집할지 여부")] bool noCache = false
 ) =>
 {
     // ── 입력값 검증 ────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ CoconaApp.Run((
         // Cocona는 --help 처리 시 ICoconaHelpMessageBuilder.BuildAndRenderHelp()를 내부적으로 사용하며,
         // 이를 직접 주입받아 재사용함으로써 코드 중복 없이 일관된 help 출력을 보장한다.
         Console.Error.WriteLine();
-        Console.Error.WriteLine(helpMessageBuilder.BuildAndRenderHelp());
+        Console.Error.WriteLine(helpRenderer.Render(helpMessageBuilder.BuildHelp()));
 
         Environment.Exit(1);
         return;
